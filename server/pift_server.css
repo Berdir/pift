@@ -1,0 +1,9 @@
+/* $Id$ */
+
+div.file-test-results table tr.pift-passed {
+  background-color: #99FF99 !important;
+}
+
+div.file-test-results table tr.pift-failed {
+  background-color: #FF9999 !important;
+}

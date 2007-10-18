@@ -1,0 +1,5 @@
+; $Id$
+name = Project issue file test server
+description = Configure remote sending/receiving of file test information.
+dependencies = project project_issue
+package = Project

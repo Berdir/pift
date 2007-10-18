@@ -1,0 +1,91 @@
+<?php
+// $Id$
+// $Name$
+
+function pift_server_install() {
+  // It seems the .module file isn't included yet, so include it manually...
+  require_once(drupal_get_path('module', 'pift_server') .'/pift_server.module');
+
+  switch ($GLOBALS['db_type']) {
+    case 'mysqli':
+    case 'mysql':
+      $q1 = db_query("CREATE TABLE {pift_data} (
+                ftid int(10) NOT NULL default '0',
+                fid int(10) NOT NULL default '0',
+                nid int(10) NOT NULL default '0',
+                cid int(10) NOT NULL default '0',
+                uid int(10) NOT NULL default '0',
+                display_data longtext NOT NULL,
+                status int(2) NOT NULL default '0',
+                PRIMARY KEY (ftid),
+                KEY(nid),
+                KEY(cid)
+            ) TYPE=MyISAM /*!40100 DEFAULT CHARACTER SET utf8 */;");
+
+      $q2 = db_query("CREATE TABLE {pift_subscriptions} (
+                uid int(10) NOT NULL default '0',
+                UNIQUE (uid)
+            ) TYPE=MyISAM /*!40100 DEFAULT CHARACTER SET utf8 */;");
+
+      $q3 = $q4 = $q5 = TRUE;
+      break;
+
+    case 'pgsql':
+      $q1 = db_query("CREATE TABLE {pift_data} (
+                ftid SERIAL,
+                fid int NOT NULL default '0',
+                nid int NOT NULL default '0',
+                cid int NOT NULL default '0',
+                uid int NOT NULL default '0',
+                display_data text NOT NULL,
+                status int NOT NULL default '0',
+                PRIMARY KEY  (ftid)
+            );");
+      $q2 = db_query("CREATE INDEX {pift_data}_nid_idx ON {pift_data}(nid);");
+      $q3 = db_query("CREATE INDEX {pift_data}_cid_idx ON {pift_data}(cid);");
+
+      $q4 = db_query("CREATE TABLE {pift_subscriptions} (
+                uid int NOT NULL default '0'
+            );");
+      $q5 = db_query("CREATE UNIQUE INDEX {pift_subscriptions}_uid_idx ON {pift_subscriptions} (uid);");
+
+      break;
+  }
+  if ($q1 && $q2 && $q3 && $q4 && $q5) {
+    // Set up the send queue to start with new issues/comments.
+    pift_server_reset_send_queue();
+    drupal_set_message(t('The Project issue file test server module was installed successfully.'));
+  }
+  else {
+    drupal_set_message(t('There was an error installing the Project issue file test server module tables.'));
+  }
+}
+
+function pift_server_uninstall() {
+  $vars = array(
+    'pift_server_last_issue_processed',
+    'pift_server_last_followup_file_processed',
+    'pift_server_reset_send_queue',
+    'pift_server_sites',
+    'pift_server_send_frequency',
+    'pift_server_last_sent',
+    'pift_failed_test_mail_text',
+  );
+
+  foreach ($vars as $var) {
+    variable_del($var);
+  }
+
+  $tables = array(
+    'pift_data',
+    'pift_subscriptions',
+  );
+
+  foreach ($tables as $table) {
+    if (db_table_exists($table)) {
+      db_query("DROP TABLE $table");
+    }
+  }
+
+  drupal_set_message(t('The Project issue file test server module was uninstalled successfully.'));
+}
