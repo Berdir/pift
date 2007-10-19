@@ -396,7 +396,9 @@ function pift_server_send_file_data() {
   }
 
   $sent = array();
-  $s = 1;
+
+  // Get the next server in the round robin cycle.
+  $s = variable_get('pift_next_test_server', 1);
 
   // Send batches, round robin.
   foreach ($batches as $batch) {
@@ -421,6 +423,7 @@ function pift_server_send_file_data() {
     }
     // Next server in line.
     $s++;
+    variable_set('pift_next_test_server', $s);
   }
 
   // Record successful sends.
