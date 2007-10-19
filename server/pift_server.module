@@ -8,14 +8,39 @@ define('PIFT_PASSED', 1);
 define('PIFT_FAILED', -1);
 define('PIFT_NOT_READABLE', -2);
 
+// Allow inclusion of some custom configuration.  Anything in the settings
+// section below can be overridden by creating a variable with the same name
+// as the define.
+if (function_exists('drupal_get_path')) {
+  $path = drupal_get_path('module', 'pift_server');
+  if (file_exists("$path/pift_server.conf")) {
+    include_once("$path/pift_server.conf");
+  }
+}
+
+/**
+ * Settings section
+ */
+
 // Limit on how many files to send for each cron run.
-define('PIFT_SEND_LIMIT', 100);
+define('PIFT_SEND_LIMIT', isset($PIFT_SEND_LIMIT) ? $PIFT_SEND_LIMIT : 100);
 
 // Number of files to send in a single call to a test server.
-define('PIFT_BATCH_SIZE', 20);
+define('PIFT_BATCH_SIZE', isset($PIFT_BATCH_SIZE) ? $PIFT_BATCH_SIZE : 20);
 
 // Regex for determining which file types should be sent for testing.
-define('PIFT_FILE_REGEX', '/(\.diff|\.patch)$/');
+define('PIFT_FILE_REGEX', isset($PIFT_FILE_REGEX) ? $PIFT_FILE_REGEX : '/(\.diff|\.patch)$/');
+
+// A comma separated list of project ID's (nids) that will be examined for
+// new files. Leave empty for all projects.
+define('PIFT_PROJECTS', isset($PIFT_PROJECTS) ? $PIFT_PROJECTS : '');
+
+/**
+ * End setting section.
+ */
+
+// Clean up -- don't want these floating around.
+unset($PIFT_SEND_LIMIT, $PIFT_BATCH_SIZE, $PIFT_FILE_REGEX, $PIFT_PROJECTS);
 
 /**
  * Implementation of hook_cron().
@@ -304,9 +329,18 @@ function pift_server_send_file_data() {
     $join = '';
   }
 
+  // Restrict to listed projects, if set.
+  if (PIFT_PROJECTS) {
+    $projects = array_filter(explode(',', PIFT_PROJECTS), 'is_numeric');
+    $where = ' AND p.nid IN ('. implode(', ', $projects) .')';
+  }
+  else {
+    $where = '';
+  }
+
   // Pull all issue files that haven't yet received test results.
   // This is one god awful query...  :(
-  $files = db_query("(SELECT pd.ftid, n.nid AS issue_id, n.title AS issue_title, n.uid, pi.pid, pi.rid, pi.file_path AS patch_url, p.title AS project, u.name AS submitter$select FROM {pift_data} pd INNER JOIN {project_issues} pi ON pd.nid = pi.nid INNER JOIN {node} n ON n.nid = pi.nid INNER JOIN {node} p ON p.nid = pi.pid INNER JOIN {users} u ON u.uid = n.uid$join WHERE pd.status = %d AND pd.cid = %d) UNION (SELECT pd.ftid, n.nid AS issue_id, n.title AS issue_title, n.uid, pi.pid, pi.rid, cu.filepath AS patch_url, p.title AS project, u.name AS submitter$select FROM {pift_data} pd INNER JOIN {project_issues} pi ON pd.nid = pi.nid INNER JOIN {comment_upload_files} cu ON pd.fid = cu.fid INNER JOIN {node} n ON n.nid = pi.nid INNER JOIN {node} p ON p.nid = pi.pid INNER JOIN {users} u ON u.uid = n.uid$join WHERE pd.status = %d AND pd.cid <> %d) ORDER BY ftid", PIFT_UNTESTED, 0, PIFT_UNTESTED, 0);
+  $files = db_query("(SELECT pd.ftid, n.nid AS issue_id, n.title AS issue_title, n.uid, pi.pid, pi.rid, pi.file_path AS patch_url, p.title AS project, u.name AS submitter$select FROM {pift_data} pd INNER JOIN {project_issues} pi ON pd.nid = pi.nid INNER JOIN {node} n ON n.nid = pi.nid INNER JOIN {node} p ON p.nid = pi.pid INNER JOIN {users} u ON u.uid = n.uid$join WHERE pd.status = %d AND pd.cid = %d$where) UNION (SELECT pd.ftid, n.nid AS issue_id, n.title AS issue_title, n.uid, pi.pid, pi.rid, cu.filepath AS patch_url, p.title AS project, u.name AS submitter$select FROM {pift_data} pd INNER JOIN {project_issues} pi ON pd.nid = pi.nid INNER JOIN {comment_upload_files} cu ON pd.fid = cu.fid INNER JOIN {node} n ON n.nid = pi.nid INNER JOIN {node} p ON p.nid = pi.pid INNER JOIN {users} u ON u.uid = n.uid$join WHERE pd.status = %d AND pd.cid <> %d$where) ORDER BY ftid", PIFT_UNTESTED, 0, PIFT_UNTESTED, 0);
 
   // Set up the batching variables.
   $bid = 0;
