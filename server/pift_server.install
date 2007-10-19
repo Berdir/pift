@@ -71,6 +71,7 @@ function pift_server_uninstall() {
     'pift_server_last_sent',
     'pift_failed_test_mail_text',
     'pift_next_test_server',
+    'pift_server_file_description',
   );
 
   foreach ($vars as $var) {
