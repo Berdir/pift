@@ -176,41 +176,7 @@ function pift_client_test_files($server, $files) {
  * @param $files
  *   An array of files to test. Each element is an associative array
  *   of information for one file, as follows:
- *     'ftid'         => The file test ID that was originally passed from
- *                       the test server for the file in question.
  *
- *     'pid'          => The project ID.
- *
- *     'rid'          => The release ID.
- *
- *     'uid'          => The uid of the user who submitted the file.
- *
- *     'filepath'     => The absolute URL for the file.
- */
-function pift_client_process_files($project_server, $files) {
-  foreach ($files as $file) {
-
-    // Add the return URL to the passed file data.
-    $file['project_server'] = $project_server;
-
-    // Rok's test function goes here.
-    if (function_exists('roks_bad_ass_testing_function')) {
-
-    }
-    // Bail to a simple test testing function.
-    else {
-      pift_client_test_file($file);
-    }
-  }
-}
-
-/**
- * Simple test testing function.  Files fail if the word 'fail'
- * is included in the file, otherwise they pass.
- *
- * @param $file
- *   An associative array representing a file to test, with the following
- *   key/value pairs:
  *     'ftid'          => The file test ID that was originally passed from
  *                       the test server for the file in question.
  *
@@ -220,26 +186,70 @@ function pift_client_process_files($project_server, $files) {
  *
  *     'uid'           => The uid of the user who submitted the file.
  *
- *     'filepath'      => The absolute URL for the file.
+ *     'issue_id'      => nid of the issue.
+ *
+ *     'issue_title'   => Title of the issue.
+ *
+ *     'project'       => Project the patch is for.
+ *
+ *     'version'       => Project version string.
+ *
+ *     'submitter'     => Drupal user submitting the patch.
+ *
+ *     'patch_url'     => The absolute URL for the file.
+ */
+function pift_client_process_files($project_server, $files) {
+  $path = drupal_get_path('module', 'pift_client');
+
+  foreach ($files as $file) {
+    // Add the return URL to the passed file data.
+    $file['project_server'] = $project_server;
+    pift_client_run_test_file($path, $file);
+  }
+}
+
+/**
+ * Helper function to run the custom test file.
+ *
+ * @param $path
+ *   Path to the test file directory.
+ * @param $file
+ *   An associative array representing a file to test, with the following
+ *   key/value pairs:
+ *
+ *     'ftid'          => The file test ID that was originally passed from
+ *                       the test server for the file in question.
+ *
+ *     'pid'           => The project ID.
+ *
+ *     'rid'           => The release ID.
+ *
+ *     'uid'           => The uid of the user who submitted the file.
+ *
+ *     'issue_id'      => nid of the issue.
+ *
+ *     'issue_title'   => Title of the issue.
+ *
+ *     'project'       => Project the patch is for.
+ *
+ *     'version'       => Project version string.
+ *
+ *     'submitter'     => Drupal user submitting the patch.
+ *
+ *     'patch_url'     => The absolute URL for the file.
  *
  *     'project_server => XML-RPC URL of project server requesting the
  *                        test results.
  */
-function pift_client_test_file($file) {
-
-  $test_result['ftid'] = $file['ftid'];
-  $project_server = $file['project_server'];
-
-	if (strpos($file['data'], 'fail') !== FALSE) {
-	  $test_result['display_data'] = "pid:{$file['pid']}, rid:{$file['rid']}, uid:{$file['uid']} -- contains the word 'fail'";
-	  $test_result['status'] = PIFT_FAILED;
-	}
-	else {
-	  $test_result['display_data'] = "pid:{$file['pid']}, rid:{$file['rid']}, uid:{$file['uid']} -- all syntax good";
-	  $test_result['status'] = PIFT_PASSED;
-	}
-
-	pift_client_send_test_results($project_server, array($test_result));
+function pift_client_run_test_file($path, $file) {
+  // Custom test file goes here.
+  if (file_exists("$path/file_test.php")) {
+    include "$path/file_test.php";
+  }
+  // Bail to a simple test testing file.
+  elseif (file_exists("$path/example_file_test.php")) {
+    include "$path/example_file_test.php";
+  }
 }
 
 /**

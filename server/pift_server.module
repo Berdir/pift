@@ -294,20 +294,19 @@ function pift_server_send_file_data() {
     return;
   }
 
-  // Dummy element so the first file isn't missed.
-  $files = array('');
+  // Add in release info if it exists.
+  if (module_exists('project_release')) {
+    $select = ', prn.version';
+    $join = ' LEFT JOIN {project_release_nodes} prn ON pi.rid = prn.nid';
+  }
+  else {
+    $select = '';
+    $join = '';
+  }
 
   // Pull all issue files that haven't yet received test results.
-  $issues = db_query("SELECT pd.ftid, pd.uid, pi.file_path AS filepath, pi.pid, pi.rid FROM {pift_data} pd INNER JOIN {project_issues} pi ON pd.nid = pi.nid WHERE pd.status = %d AND pd.cid = %d ORDER BY pd.ftid", PIFT_UNTESTED, 0);
-  while($issue_file = db_fetch_array($issues)) {
-    $files[] = $issue_file;
-  }
-
-  // Pull all followup files that haven't yet received test results.
-  $followups = db_query("SELECT pd.ftid, pd.uid, cu.filepath, pi.pid, pi.rid FROM {pift_data} pd INNER JOIN {project_issues} pi ON pd.nid = pi.nid INNER JOIN {comment_upload_files} cu ON pd.fid = cu.fid WHERE pd.status = %d AND pd.cid <> %d ORDER BY pd.ftid", PIFT_UNTESTED, 0);
-  while($followup_file = db_fetch_array($followups)) {
-    $files[] = $followup_file;
-  }
+  // This is one god awful query...  :(
+  $files = db_query("(SELECT pd.ftid, n.nid AS issue_id, n.title AS issue_title, n.uid, pi.pid, pi.rid, pi.file_path AS patch_url, p.title AS project, u.name AS submitter$select FROM {pift_data} pd INNER JOIN {project_issues} pi ON pd.nid = pi.nid INNER JOIN {node} n ON n.nid = pi.nid INNER JOIN {node} p ON p.nid = pi.pid INNER JOIN {users} u ON u.uid = n.uid$join WHERE pd.status = %d AND pd.cid = %d) UNION (SELECT pd.ftid, n.nid AS issue_id, n.title AS issue_title, n.uid, pi.pid, pi.rid, cu.filepath AS patch_url, p.title AS project, u.name AS submitter$select FROM {pift_data} pd INNER JOIN {project_issues} pi ON pd.nid = pi.nid INNER JOIN {comment_upload_files} cu ON pd.fid = cu.fid INNER JOIN {node} n ON n.nid = pi.nid INNER JOIN {node} p ON p.nid = pi.pid INNER JOIN {users} u ON u.uid = n.uid$join WHERE pd.status = %d AND pd.cid <> %d) ORDER BY ftid", PIFT_UNTESTED, 0, PIFT_UNTESTED, 0);
 
   // Set up the batching variables.
   $bid = 0;
@@ -316,17 +315,15 @@ function pift_server_send_file_data() {
   $total = 0;
 
   // Send new data if there is any.
-  while (($file = next($files)) && $total <= PIFT_SEND_LIMIT) {
-    if (is_readable($file['filepath'])) {
+  while (($file = db_fetch_array($files)) && $total <= PIFT_SEND_LIMIT) {
+    if (is_readable($file['patch_url'])) {
       // Start the next batch if the current one is full.
       if ($batch_total >= PIFT_BATCH_SIZE) {
         $bid++;
         $batch_total = 0;
       }
-      // Add file data payload.
-      $file['data'] = file_get_contents($file['filepath']);
       // Convert filepath to absolute URL.
-      $file['filepath'] = url($file['filepath'], NULL, NULL, TRUE);
+      $file['patch_url'] = url($file['patch_url'], NULL, NULL, TRUE);
       // Add the file to the current batch.
       $batches[$bid][] = $file;
       // Increment both the current batch size, and the total size.
