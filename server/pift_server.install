@@ -63,7 +63,7 @@ function pift_server_install() {
 
 function pift_server_uninstall() {
   $vars = array(
-    'pift_server_last_issue_processed',
+    'pift_server_last_issue_file_processed',
     'pift_server_last_followup_file_processed',
     'pift_server_reset_send_queue',
     'pift_server_sites',

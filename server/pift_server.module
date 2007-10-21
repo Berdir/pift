@@ -93,10 +93,11 @@ function pift_server_form_alter($form_id, &$form) {
       }
       break;
     case 'project_issue_node_form':
-      // Add in custom description for file testing.
-      if (isset($form['project_info']['pid']['#default_value']) && pift_server_active_project($form['project_info']['pid']['#default_value'])) {
+      // Add in custom description for file testing, test here for the existence of a project,
+      // so the description doesn't get added to page 1 of the new issue form.
+      if (isset($form['project_info']['pid']['#default_value']) && isset($form['attachments']['wrapper']['new']['upload']) && pift_server_active_project($form['project_info']['pid']['#default_value'])) {
         $description = filter_xss_admin(variable_get('pift_server_file_description', ''));
-        $form['issue_details']['file_issue']['#description'] .= $description;
+        $form['attachments']['wrapper']['new']['upload']['#description'] .= $description;
       }
       break;
   }
@@ -245,7 +246,7 @@ function pift_server_menu($may_cache) {
  */
 function pift_server_get_last() {
 
-  $last_issue = variable_get('pift_server_last_issue_processed', 0);
+  $last_issue = variable_get('pift_server_last_issue_file_processed', 0);
   $last_followup = variable_get('pift_server_last_followup_file_processed', 0);
 
   return array('issue' => $last_issue, 'followup' => $last_followup);
@@ -261,7 +262,7 @@ function pift_server_get_last() {
  */
 function pift_server_get_newest() {
 
-  $newest_issue = db_result(db_query("SELECT MAX(nid) FROM {node}"));
+  $newest_issue = db_result(db_query("SELECT MAX(fid) FROM {files}"));
   // No result, set to zero.
   $newest_issue = $newest_issue === FALSE ? 0 : $newest_issue;
 
@@ -279,7 +280,7 @@ function pift_server_get_newest() {
  */
 function pift_server_reset_send_queue () {
   $newest = pift_server_get_newest();
-  variable_set('pift_server_last_issue_processed', $newest['issue']);
+  variable_set('pift_server_last_issue_file_processed', $newest['issue']);
   variable_set('pift_server_last_followup_file_processed', $newest['followup']);
   variable_set('pift_server_last_sent', time());
   // Remove all untested files.
@@ -301,30 +302,30 @@ function pift_server_add_new_files() {
   $data['followups'] = array();
 
   // Pull all new issue data. Limit the results to PIFT_SEND_LIMIT for consistency.
-  $issues = db_query_range("SELECT n.nid, n.uid, pi.file_path FROM {node} n INNER JOIN {project_issues} pi ON n.nid = pi.nid WHERE n.type = 'project_issue' AND n.nid > %d AND n.nid <= %d AND pi.file_path <> '' ORDER BY n.nid", $last['issue'], $newest['issue'], 0, PIFT_SEND_LIMIT);
+  $issue_files = db_query_range("SELECT n.nid, n.uid, f.fid, f.filepath FROM {node} n INNER JOIN {files} f ON n.nid = f.nid WHERE n.type = 'project_issue' AND f.fid > %d AND f.fid <= %d AND f.filepath <> '' ORDER BY n.nid, f.fid", $last['issue'], $newest['issue'], 0, PIFT_SEND_LIMIT);
 
-  while ($issue = db_fetch_object($issues)) {
+  while ($file = db_fetch_object($issue_files)) {
     // Update last processed here, in case the server dies during the run.
-    variable_set('pift_server_last_issue_processed', $issue->nid);
+    variable_set('pift_server_last_issue_file_processed', $file->fid);
 
     // Put the file data into the send queue.
-    if (preg_match(PIFT_FILE_REGEX, basename($issue->file_path)) && file_exists($issue->file_path)) {
+    if (preg_match(PIFT_FILE_REGEX, basename($file->filepath)) && file_exists($file->filepath)) {
       $ftid = db_next_id('{pift_data}_ftid');
-      db_query("INSERT INTO {pift_data} (ftid, fid, nid, cid, uid, display_data, status) VALUES (%d, %d, %d, %d, %d, '%s', %d)", $ftid, 0, $issue->nid, 0, $issue->uid, '', PIFT_UNTESTED);
+      db_query("INSERT INTO {pift_data} (ftid, fid, nid, cid, uid, display_data, status) VALUES (%d, %d, %d, %d, %d, '%s', %d)", $ftid, $file->fid, $file->nid, 0, $file->uid, '', PIFT_UNTESTED);
     }
   }
 
   // Pull all new followup file data. Limit the results to PIFT_SEND_LIMIT for consistency.
   $followup_files = db_query_range("SELECT n.nid, c.cid, c.uid, cu.fid, cu.filepath FROM {node} n INNER JOIN {comments} c ON n.nid = c.nid INNER JOIN {comment_upload_files} cu ON c.cid = cu.cid WHERE n.type = 'project_issue' AND cu.fid > %d AND cu.fid <= %d AND cu.filepath <> '' ORDER BY c.cid, cu.fid", $last['followup'], $newest['followup'], 0, PIFT_SEND_LIMIT);
 
-  while ($followup_file = db_fetch_object($followup_files)) {
+  while ($file = db_fetch_object($followup_files)) {
     // Update last processed here, in case the server dies during the run.
-    variable_set('pift_server_last_followup_file_processed', $followup_file->fid);
+    variable_set('pift_server_last_followup_file_processed', $file->fid);
 
     // Put the file data into the send queue.
-    if (preg_match(PIFT_FILE_REGEX, basename($followup_file->filepath)) && file_exists($followup_file->filepath)) {
+    if (preg_match(PIFT_FILE_REGEX, basename($file->filepath)) && file_exists($file->filepath)) {
       $ftid = db_next_id('{pift_data}_ftid');
-      db_query("INSERT INTO {pift_data} (ftid, fid, nid, cid, uid, display_data, status) VALUES (%d, %d, %d, %d, %d, '%s', %d)", $ftid, $followup_file->fid, $followup_file->nid, $followup_file->cid, $followup_file->uid, '', PIFT_UNTESTED);
+      db_query("INSERT INTO {pift_data} (ftid, fid, nid, cid, uid, display_data, status) VALUES (%d, %d, %d, %d, %d, '%s', %d)", $ftid, $file->fid, $file->nid, $file->cid, $file->uid, '', PIFT_UNTESTED);
     }
   }
 }
@@ -364,7 +365,7 @@ function pift_server_send_file_data() {
 
   // Pull all issue files that haven't yet received test results.
   // This is one god awful query...  :(
-  $files = db_query("(SELECT pd.ftid, n.nid AS issue_id, n.title AS issue_title, n.uid, pi.pid, pi.rid, pi.file_path AS patch_url, p.title AS project, u.name AS submitter$select FROM {pift_data} pd INNER JOIN {project_issues} pi ON pd.nid = pi.nid INNER JOIN {node} n ON n.nid = pi.nid INNER JOIN {node} p ON p.nid = pi.pid INNER JOIN {users} u ON u.uid = n.uid$join WHERE pd.status = %d AND pd.cid = %d$where) UNION (SELECT pd.ftid, n.nid AS issue_id, n.title AS issue_title, n.uid, pi.pid, pi.rid, cu.filepath AS patch_url, p.title AS project, u.name AS submitter$select FROM {pift_data} pd INNER JOIN {project_issues} pi ON pd.nid = pi.nid INNER JOIN {comment_upload_files} cu ON pd.fid = cu.fid INNER JOIN {node} n ON n.nid = pi.nid INNER JOIN {node} p ON p.nid = pi.pid INNER JOIN {users} u ON u.uid = n.uid$join WHERE pd.status = %d AND pd.cid <> %d$where) ORDER BY ftid", PIFT_UNTESTED, 0, PIFT_UNTESTED, 0);
+  $files = db_query("(SELECT pd.ftid, n.nid AS issue_id, n.title AS issue_title, n.uid, pi.pid, pi.rid, f.filepath AS patch_url, p.title AS project, u.name AS submitter$select FROM {pift_data} pd INNER JOIN {project_issues} pi ON pd.nid = pi.nid INNER JOIN {files} f ON pd.fid = f.fid INNER JOIN {node} n ON n.nid = pi.nid INNER JOIN {node} p ON p.nid = pi.pid INNER JOIN {users} u ON u.uid = n.uid$join WHERE pd.status = %d AND pd.cid = %d$where) UNION (SELECT pd.ftid, n.nid AS issue_id, n.title AS issue_title, n.uid, pi.pid, pi.rid, cu.filepath AS patch_url, p.title AS project, u.name AS submitter$select FROM {pift_data} pd INNER JOIN {project_issues} pi ON pd.nid = pi.nid INNER JOIN {comment_upload_files} cu ON pd.fid = cu.fid INNER JOIN {node} n ON n.nid = pi.nid INNER JOIN {node} p ON p.nid = pi.pid INNER JOIN {users} u ON u.uid = n.uid$join WHERE pd.status = %d AND pd.cid <> %d$where) ORDER BY ftid", PIFT_UNTESTED, 0, PIFT_UNTESTED, 0);
 
   // Set up the batching variables.
   $bid = 0;
@@ -591,15 +592,16 @@ function pift_server_mail_failed_tests($ftids) {
       // it could be coming from two different places. Send user directly to
       // the comment if the file was attached to a comment.
       if ($mail->cid) {
-        $filepath = db_result(db_query("SELECT filepath FROM {comment_upload_files} WHERE fid = %d", $mail->fid));
+        $table = '{comment_upload_files}';
         $fragment = "comment-$mail->cid";
       }
       else {
-        $filepath = db_result(db_query("SELECT file_path FROM {project_issues} WHERE nid = %d", $mail->nid));
+        $table = '{files}';
         $fragment = NULL;
       }
+      $filepath = db_result(db_query("SELECT filepath FROM $table WHERE fid = %d", $mail->fid));
 
-      if (file_exists($filepath)) {
+      if (is_readable($filepath)) {
         $variables = array(
           '!username' => $mail->name,
           '!site' => $site_name,
@@ -627,7 +629,7 @@ function pift_server_nodeapi(&$node, $op, $arg) {
     switch ($op) {
       case 'view':
         // Pull file attachments for this issue node.
-        $result = db_query("SELECT pi.file_path AS filepath, pd.display_data, pd.status FROM {pift_data} pd INNER JOIN {project_issues} pi ON pi.nid = pd.nid WHERE pi.nid = %d AND pd.cid = %d AND pi.file_path <> '' AND pd.status <> %d ORDER BY ftid", $node->nid, 0, PIFT_UNTESTED);
+        $result = db_query("SELECT f.filepath, pd.display_data, pd.status FROM {pift_data} pd INNER JOIN {files} f ON pd.fid = f.fid WHERE pd.nid = %d AND pd.cid = %d AND f.filepath <> '' AND pd.status <> %d ORDER BY ftid", $node->nid, 0, PIFT_UNTESTED);
         $display = array();
 
         // Load the files into an array to pass to the theming function.
@@ -639,11 +641,9 @@ function pift_server_nodeapi(&$node, $op, $arg) {
           );
         }
         // Display table just below file attachment.
-        // TODO: this should move in the future when the attachment location
-        // gets moved from the metadata table.
         $node->content['file_test_data'] = array(
           '#value' => theme('pift_server_results', $display),
-          '#weight' => -4,
+          '#weight' => 49,  // Just above the upload attachments.
         );
         break;
       case 'delete':
@@ -690,7 +690,7 @@ function pift_server_comment(&$comment, $op) {
       if (!isset($cids)) {
         $cids = array();
         // Pull file attachments for all followups on the issue.
-        $result = db_query("SELECT cu.cid, cu.filepath, cu.description, pd.display_data, pd.status FROM {pift_data} pd INNER JOIN {comment_upload_files} cu ON pd.fid = cu.fid WHERE cu.nid = %d AND pd.cid <> %d AND status <> %d ORDER BY ftid", $node->nid, 0, PIFT_UNTESTED);
+        $result = db_query("SELECT cu.cid, cu.filepath, cu.description, pd.display_data, pd.status FROM {pift_data} pd INNER JOIN {comment_upload_files} cu ON pd.fid = cu.fid WHERE pd.nid = %d AND pd.cid <> %d AND status <> %d ORDER BY ftid", $node->nid, 0, PIFT_UNTESTED);
 
         // Load the files into an array to pass to the theming function.
         while ($file = db_fetch_array($result)) {
