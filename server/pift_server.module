@@ -643,7 +643,7 @@ function pift_server_nodeapi(&$node, $op, $arg) {
         // Display table just below file attachment.
         $node->content['file_test_data'] = array(
           '#value' => theme('pift_server_results', $display),
-          '#weight' => 49,  // Just above the upload attachments.
+          '#weight' => 51,  // Just below the upload attachments.
         );
         break;
       case 'delete':
