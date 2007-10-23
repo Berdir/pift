@@ -265,12 +265,10 @@ function pift_client_run_test_file($path, $file) {
  *                       the test server for the file in question.
  *
  *     'status'        => The file's test status (passed, failed, etc.).
+ *                        Use the provided constants: PIFT_PASSED, PIFT_FAILED.
  *
  *     'display_data'  => Optional. A string of additional data to display
  *                       when rendering the file test results.
- *
- *     'project_server => XML-RPC URL of project server requesting the
- *                        test results.
  */
 function pift_client_send_test_results($project_server, $files) {
 
@@ -289,6 +287,9 @@ function pift_client_send_test_results($project_server, $files) {
   // Failed test server validation.
   elseif (isset($result['error'])) {
     pift_server_xmlrpc_error_handler($server, $result['error']);
+  }
+  else {
+    watchdog('project_remote', t('File test results sent successfully to %project_server', array('%project_server' => $project_server)));
   }
 }
 
