@@ -650,6 +650,18 @@ function pift_server_nodeapi(&$node, $op, $arg) {
         // Remove related data in the test results table.
         db_query("DELETE FROM {pift_data} WHERE nid = %d", $node->nid);
         break;
+      case 'update':
+        // If files were deleted, remove related data in the test results table.
+        if (is_array($node->files)) {
+          foreach ($node->files as $file) {
+            // Can be either an array or object as this point.
+            $file = (object) $file;
+            if ($file->remove) {
+              db_query("DELETE FROM {pift_data} WHERE cid = %d AND fid = %d", $comment['cid'], $file->fid);
+            }
+          }
+        }
+        break;
     }
   }
 }
@@ -716,11 +728,14 @@ function pift_server_comment(&$comment, $op) {
       }
       break;
     case 'update':
-      // Remove related data in the test results table.
-      foreach ($comment['files'] as $file) {
-        $file = (object)$file;
-        if ($file->remove) {
-          db_query("DELETE FROM {pift_data} WHERE cid = %d AND fid = %d", $comment['cid'], $file->fid);
+      // If files were deleted, remove related data in the test results table.
+      if (is_array($comment['files'])) {
+        foreach ($comment['files'] as $file) {
+          // Can be either an array or object as this point.
+          $file = (object) $file;
+          if ($file->remove) {
+            db_query("DELETE FROM {pift_data} WHERE cid = %d AND fid = %d", $comment['cid'], $file->fid);
+          }
         }
       }
       break;
