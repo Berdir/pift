@@ -4,7 +4,7 @@
 
 // File testing status definitions.
 define('PIFT_PASSED', 1);
-define('PIFT_FAILED', -1);
+define('PIFT_FAILED', 2);
 
 /**
  * Implementation of hook_help().
@@ -40,6 +40,13 @@ function pift_client_settings_form() {
     '#title' => t('File test server sites'),
     '#default_value' => variable_get('pift_client_sites', ''),
     '#description' => t("List the servers that may send file data for testing. Each site that sends information must have the <em>Project issue file test server</em> module installed, and you must include valid login information for a Drupal user on that site who has the 'administer projects' permission. Put one server site per line, in the following format: <em>user::password::xmlrpc-url</em>. For example, <em>myusername::mypassword::http://example.com/xmlrpc.php</em>"),
+  );
+
+  $form['pift_client_testing_file'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Custom test file'),
+    '#default_value' => variable_get('pift_client_testing_file', ''),
+    '#description' => t('To use a custom test file, enter the full path here. The path can either be a relative path from the drupal root, or an absolute path.'),
   );
 
   return system_settings_form($form);
@@ -199,12 +206,27 @@ function pift_client_test_files($server, $files) {
  *     'patch_url'     => The absolute URL for the file.
  */
 function pift_client_process_files($project_server, $files) {
-  $path = drupal_get_path('module', 'pift_client');
+  $test_file = variable_get('pift_client_testing_file', '');
 
-  foreach ($files as $file) {
-    // Add the return URL to the passed file data.
-    $file['project_server'] = $project_server;
-    pift_client_run_test_file($path, $file);
+  // Look for custom test file.
+  if (file_exists($test_file)) {
+    $path = $test_file;
+  }
+  else {
+    $test_file = drupal_get_path('module', 'pift_client') .'/example_file_test.php';
+    // Bail to a simple test testing file.
+    if (file_exists($test_file)) {
+      $path = $test_file;
+    }
+  }
+
+  // Test each file.
+  if (isset($path)) {
+    foreach ($files as $file) {
+      // Add the return URL to the passed file data.
+      $file['project_server'] = $project_server;
+      pift_client_run_test_file($path, $file);
+    }
   }
 }
 
@@ -242,14 +264,7 @@ function pift_client_process_files($project_server, $files) {
  *                        test results.
  */
 function pift_client_run_test_file($path, $file) {
-  // Custom test file goes here.
-  if (file_exists("$path/file_test.php")) {
-    include "$path/file_test.php";
-  }
-  // Bail to a simple test testing file.
-  elseif (file_exists("$path/example_file_test.php")) {
-    include "$path/example_file_test.php";
-  }
+  include $path;
 }
 
 /**

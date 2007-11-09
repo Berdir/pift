@@ -9,6 +9,7 @@ function pift_client_install() {
 function pift_client_uninstall() {
   $vars = array(
     'pift_client_sites',
+    'pift_client_testing_file',
   );
 
   foreach ($vars as $var) {

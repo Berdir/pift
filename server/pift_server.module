@@ -2,45 +2,34 @@
 // $Id$
 // $Name$
 
+/**
+ * Advanced settings section
+ */
+// Limit on how many files to send for each cron run.
+define('PIFT_SEND_LIMIT', variable_get('pift_send_limit', 100));
+// Number of files to send in a single call to a test server.
+define('PIFT_BATCH_SIZE', variable_get('pift_batch_size', 20));
+// Regex for determining which file types should be sent for testing.
+define('PIFT_FILE_REGEX', variable_get('pift_file_regex', '/(\.diff|\.patch)$/'));
+// A comma separated list of project ID's (nids) that will be examined for
+// new files. Leave empty for all projects.
+define('PIFT_PROJECTS', variable_get('pift_projects', ''));
+// Number of hours to wait before resending an untested file to a test
+// server (ie, the test server never sent back the results).
+define('PIFT_RESEND_TIME', variable_get('pift_resend_time', 2));
+// Number of hours to wait before retesting a previously passes file.
+define('PIFT_RETEST_TIME', variable_get('pift_retest_time', 24));
+// Re-test previously passed tests that have the the following status
+// (should be a comma separated list of sids). Leave empty to re-test
+// every status.
+define('PIFT_RETEST_STATUS', variable_get('pift_retest_status', ''));
+
 // File testing status definitions.
 define('PIFT_UNTESTED', 0);
 define('PIFT_PASSED', 1);
-define('PIFT_FAILED', -1);
-define('PIFT_NOT_READABLE', -2);
-
-// Allow inclusion of some custom configuration.  Anything in the settings
-// section below can be overridden by creating a variable with the same name
-// as the define.
-if (function_exists('drupal_get_path')) {
-  $path = drupal_get_path('module', 'pift_server');
-  if (file_exists("$path/pift_server.conf")) {
-    include_once("$path/pift_server.conf");
-  }
-}
-
-/**
- * Settings section
- */
-
-// Limit on how many files to send for each cron run.
-define('PIFT_SEND_LIMIT', isset($PIFT_SEND_LIMIT) ? $PIFT_SEND_LIMIT : 100);
-
-// Number of files to send in a single call to a test server.
-define('PIFT_BATCH_SIZE', isset($PIFT_BATCH_SIZE) ? $PIFT_BATCH_SIZE : 20);
-
-// Regex for determining which file types should be sent for testing.
-define('PIFT_FILE_REGEX', isset($PIFT_FILE_REGEX) ? $PIFT_FILE_REGEX : '/(\.diff|\.patch)$/');
-
-// A comma separated list of project ID's (nids) that will be examined for
-// new files. Leave empty for all projects.
-define('PIFT_PROJECTS', isset($PIFT_PROJECTS) ? $PIFT_PROJECTS : '');
-
-/**
- * End setting section.
- */
-
-// Clean up -- don't want these floating around.
-unset($PIFT_SEND_LIMIT, $PIFT_BATCH_SIZE, $PIFT_FILE_REGEX, $PIFT_PROJECTS);
+define('PIFT_FAILED', 2);
+define('PIFT_RETEST', 3);
+define('PIFT_NOT_READABLE', 4);
 
 /**
  * Implementation of hook_cron().
@@ -56,6 +45,7 @@ function pift_server_cron() {
     // Time to send again?
     if ($time > ($last_sent + $frequency)) {
       pift_server_add_new_files();
+      pift_server_retest_check();
       pift_server_send_file_data();
       // Update last sent time.
       variable_set('pift_server_last_sent', $time);
@@ -183,11 +173,111 @@ function pift_server_settings_form() {
     '#description' => t('If selected, the sending queue will be cleared, and only files submitted from the time of the reset will be sent.'),
   );
 
+  $form['advanced'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Advanced settings'),
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
+  );
+
+  $form['advanced']['pift_send_limit'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Send limit'),
+    '#description' => t('Limit on how many files to send for each cron run. Default is 100.'),
+    '#required' => TRUE,
+    '#default_value' => variable_get('pift_send_limit', 100),
+    '#size' => 10,
+    '#maxlength' => 10,
+    '#validate' => array('pift_server_is_numeric_validate' => array()),
+  );
+
+  $form['advanced']['pift_batch_size'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Batch size'),
+    '#description' => t('Number of files to send in a single call to a test server. Default is 20.'),
+    '#required' => TRUE,
+    '#default_value' => variable_get('pift_batch_size', 20),
+    '#size' => 10,
+    '#maxlength' => 10,
+    '#validate' => array('pift_server_is_numeric_validate' => array()),
+  );
+
+  $form['advanced']['pift_file_regex'] = array(
+    '#type' => 'textfield',
+    '#title' => t('File regex'),
+    '#description' => t('Regex for determining which file types should be sent for testing. Default is all files ending in <em>.patch</em> or <em>.diff</em>. You must include the full regex, ex. <em>/(\.diff|\.patch)$/</em>'),
+    '#required' => TRUE,
+    '#default_value' => variable_get('pift_file_regex', '/(\.diff|\.patch)$/'),
+  );
+
+  $form['advanced']['pift_resend_time'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Re-send interval for untested files'),
+    '#description' => t('Number of hours to wait before re-sending an untested file to a test server (ie, the test server never sent back the results). Default is 2 hours.'),
+    '#required' => TRUE,
+    '#default_value' => variable_get('pift_resend_time', 2),
+    '#size' => 4,
+    '#maxlength' => 4,
+    '#validate' => array('pift_server_is_numeric_validate' => array()),
+  );
+
+  $form['advanced']['pift_retest_time'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Re-test interval for previously passed files'),
+    '#description' => t('Number of hours to wait before re-testing a previously passed file. Set to -1 to prevent re-testing. Default is 24 hours.'),
+    '#required' => TRUE,
+    '#default_value' => variable_get('pift_retest_time', 24),
+    '#size' => 4,
+    '#maxlength' => 4,
+    '#validate' => array('pift_server_is_numeric_validate' => array()),
+  );
+
+  $form['advanced']['pift_retest_status'] = array(
+    '#type' => 'textfield',
+    '#title' => t('List of project statuses to re-test'),
+    '#description' => t("Re-test previously passed tests that have the following status (should be a comma separated list of issue sids). Leave empty to re-test every status."),
+    '#default_value' => variable_get('pift_retest_status', ''),
+    '#validate' => array('pift_server_comma_separated_numeric_validate' => array()),
+  );
+
+  $form['advanced']['pift_projects'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Projects to test'),
+    '#description' => t("A comma separated list of project ID's (nids) that will be examined for new files. Leave empty for all projects."),
+    '#default_value' => variable_get('pift_projects', ''),
+    '#validate' => array('pift_server_comma_separated_numeric_validate' => array()),
+  );
+
   // Custom submit handler
   $form['#submit']['pift_server_settings_form_extra_submit'] = array();
   // system_settings_form() doesn't add the default if #submit already exists.
   $form['#submit']['system_settings_form_submit'] = array();
   return system_settings_form($form);
+}
+
+/**
+ * Validation for numeric textfields.
+ */
+function pift_server_is_numeric_validate($form) {
+  if (!is_numeric($form['#value'])) {
+    form_set_error($form['#name'], t('%title must be a number.', array('%title' => $form['#title'])));
+  }
+}
+
+/**
+ * Validation for comma separated numeric textfields.
+ */
+function pift_server_comma_separated_numeric_validate($form) {
+  if ($values = $form['#value']) {
+    $values = explode(',', $values);
+    $values = array_map('trim', $values);
+    foreach ($values as $value) {
+      if (!is_numeric($value)) {
+        form_set_error($form['#name'], t("%title must be a comma separated list of numeric ID's.", array('%title' => $form['#title'])));
+        return;
+      }
+    }
+  }
 }
 
 /**
@@ -311,7 +401,7 @@ function pift_server_add_new_files() {
     // Put the file data into the send queue.
     if (preg_match(PIFT_FILE_REGEX, basename($file->filepath)) && file_exists($file->filepath)) {
       $ftid = db_next_id('{pift_data}_ftid');
-      db_query("INSERT INTO {pift_data} (ftid, fid, nid, cid, uid, display_data, status) VALUES (%d, %d, %d, %d, %d, '%s', %d)", $ftid, $file->fid, $file->nid, 0, $file->uid, '', PIFT_UNTESTED);
+      db_query("INSERT INTO {pift_data} (ftid, fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, %d, '%s', %d, %d)", $ftid, $file->fid, $file->nid, 0, $file->uid, '', PIFT_UNTESTED, 0);
     }
   }
 
@@ -325,9 +415,47 @@ function pift_server_add_new_files() {
     // Put the file data into the send queue.
     if (preg_match(PIFT_FILE_REGEX, basename($file->filepath)) && file_exists($file->filepath)) {
       $ftid = db_next_id('{pift_data}_ftid');
-      db_query("INSERT INTO {pift_data} (ftid, fid, nid, cid, uid, display_data, status) VALUES (%d, %d, %d, %d, %d, '%s', %d)", $ftid, $file->fid, $file->nid, $file->cid, $file->uid, '', PIFT_UNTESTED);
+      db_query("INSERT INTO {pift_data} (ftid, fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, %d, '%s', %d, %d)", $ftid, $file->fid, $file->nid, $file->cid, $file->uid, '', PIFT_UNTESTED, 0);
     }
   }
+}
+
+/**
+ * Marks previously passed files for re-testing, if:
+ *   1. The file's last test is older than the retest interval.
+ *   2. The file is part of a project that's being tested.
+ *   3. The file is attached to an issue that has one of the
+ *      issue states marked for testing.
+ *
+ */
+function pift_server_retest_check() {
+
+  // Never re-test files.
+  if (PIFT_RESEND_TIME == '-1') {
+    return;
+  }
+
+  // Set up the retest time limit.
+  $retest_time = time() - (PIFT_RETEST_TIME * 60 * 60);
+
+  $where = '';
+  $where_parts = array();
+
+  // Restrict to listed projects, if set.
+  if (PIFT_PROJECTS) {
+    $where_parts[] = ' p.nid IN ('. PIFT_PROJECTS .')';
+  }
+
+  // Restrict to the status list, if set.
+  if (PIFT_RETEST_STATUS) {
+    $where_parts[] = 'pi.sid IN ('. PIFT_RETEST_STATUS .')';
+  }
+
+  if (!empty($where_parts)) {
+    $where .= " AND nid IN (SELECT pi.nid FROM {project_issues} pi INNER JOIN {node} p ON p.nid = pi.pid WHERE ". implode(' AND ', $where_parts) .")";
+  }
+
+  db_query("UPDATE {pift_data} SET status = %d WHERE status = %d AND timestamp < %d$where", PIFT_RETEST, PIFT_PASSED, $retest_time);
 }
 
 /**
@@ -354,27 +482,36 @@ function pift_server_send_file_data() {
     $join = '';
   }
 
+  // Set up the resend time limit.
+  $resend_time = time() - (PIFT_RESEND_TIME * 60 * 60);
+
+  $where = '';
+
   // Restrict to listed projects, if set.
   if (PIFT_PROJECTS) {
-    $projects = array_filter(explode(',', PIFT_PROJECTS), 'is_numeric');
-    $where = ' AND p.nid IN ('. implode(', ', $projects) .')';
-  }
-  else {
-    $where = '';
+    $where .= ' AND p.nid IN ('. PIFT_PROJECTS .')';
   }
 
-  // Pull all issue files that haven't yet received test results.
+  // Pull issue files that need to be sent for testing.  These include:
+  // 1. All files marked as untested that have exceeded the resend period.
+  //    since their last send (includes newly added files).
+  // 2. All files that have been marked for re-testing.
   // This is one god awful query...  :(
-  $files = db_query("(SELECT pd.ftid, n.nid AS issue_id, n.title AS issue_title, n.uid, pi.pid, pi.rid, f.filepath AS patch_url, p.title AS project, u.name AS submitter$select FROM {pift_data} pd INNER JOIN {project_issues} pi ON pd.nid = pi.nid INNER JOIN {files} f ON pd.fid = f.fid INNER JOIN {node} n ON n.nid = pi.nid INNER JOIN {node} p ON p.nid = pi.pid INNER JOIN {users} u ON u.uid = n.uid$join WHERE pd.status = %d AND pd.cid = %d$where) UNION (SELECT pd.ftid, n.nid AS issue_id, n.title AS issue_title, n.uid, pi.pid, pi.rid, cu.filepath AS patch_url, p.title AS project, u.name AS submitter$select FROM {pift_data} pd INNER JOIN {project_issues} pi ON pd.nid = pi.nid INNER JOIN {comment_upload_files} cu ON pd.fid = cu.fid INNER JOIN {node} n ON n.nid = pi.nid INNER JOIN {node} p ON p.nid = pi.pid INNER JOIN {users} u ON u.uid = n.uid$join WHERE pd.status = %d AND pd.cid <> %d$where) ORDER BY ftid", PIFT_UNTESTED, 0, PIFT_UNTESTED, 0);
+  $files = db_query_range("(SELECT pd.ftid, n.nid AS issue_id, n.title AS issue_title, n.uid, pi.pid, pi.rid, f.filepath AS patch_url, p.title AS project, u.name AS submitter$select FROM {pift_data} pd INNER JOIN {project_issues} pi ON pd.nid = pi.nid INNER JOIN {files} f ON pd.fid = f.fid INNER JOIN {node} n ON n.nid = pi.nid INNER JOIN {node} p ON p.nid = pi.pid INNER JOIN {users} u ON u.uid = n.uid$join WHERE ((pd.status = %d AND pd.timestamp < %d) OR pd.status = %d) AND pd.cid = %d$where) UNION (SELECT pd.ftid, n.nid AS issue_id, n.title AS issue_title, n.uid, pi.pid, pi.rid, cu.filepath AS patch_url, p.title AS project, u.name AS submitter$select FROM {pift_data} pd INNER JOIN {project_issues} pi ON pd.nid = pi.nid INNER JOIN {comment_upload_files} cu ON pd.fid = cu.fid INNER JOIN {node} n ON n.nid = pi.nid INNER JOIN {node} p ON p.nid = pi.pid INNER JOIN {users} u ON u.uid = n.uid$join WHERE ((pd.status = %d AND pd.timestamp < %d) OR pd.status = %d) AND pd.cid <> %d$where) ORDER BY ftid", PIFT_UNTESTED, $resend_time, PIFT_RETEST, 0, PIFT_UNTESTED, $resend_time, PIFT_RETEST, 0, 0, PIFT_SEND_LIMIT);
+
+  // Nothing to do.
+  if (!db_num_rows($files)) {
+    return;
+  }
 
   // Set up the batching variables.
   $bid = 0;
   $batches = array();
   $batch_total = 0;
-  $total = 0;
+  $sent_files = array();
 
   // Send new data if there is any.
-  while (($file = db_fetch_array($files)) && $total <= PIFT_SEND_LIMIT) {
+  while ($file = db_fetch_array($files)) {
     if (is_readable($file['patch_url'])) {
       // Start the next batch if the current one is full.
       if ($batch_total >= PIFT_BATCH_SIZE) {
@@ -385,9 +522,10 @@ function pift_server_send_file_data() {
       $file['patch_url'] = url($file['patch_url'], NULL, NULL, TRUE);
       // Add the file to the current batch.
       $batches[$bid][] = $file;
+      // Add to the list of files that will be sent with this batch.
+      $sent_files[$bid][] = $file['ftid'];
       // Increment both the current batch size, and the total size.
       $batch_total++;
-      $total++;
     }
     // File is not readable, mark as such.
     else {
@@ -426,7 +564,7 @@ function pift_server_send_file_data() {
   $s = variable_get('pift_next_test_server', 1);
 
   // Send batches, round robin.
-  foreach ($batches as $batch) {
+  foreach ($batches as $bid => $batch) {
     // We're at the end of the server line, start over.
     if ($s > $i) {
       $s = 1;
@@ -444,6 +582,8 @@ function pift_server_send_file_data() {
     }
     // List of successful sends.
     else {
+      // Update the last sent timestamp for this batch of files.
+      db_query("UPDATE {pift_data} SET timestamp = %d WHERE ftid IN (". implode(', ', $sent_files[$bid]) .")", time());
       $sent[] = check_plain($servers[$s]['xmlrpc_url']);
     }
     // Next server in line.
@@ -557,9 +697,11 @@ function pift_server_process_test_results($server, $files) {
  */
 function pift_server_process_files($files) {
   $ftids = array();
+  $time = time();
   foreach ($files as $file) {
-    // Update the entry that was originally entered for this file.
-    db_query("UPDATE {pift_data} SET display_data = '%s', status = %d WHERE ftid = %d", $file['display_data'], $file['status'], $file['ftid']);
+    // Update the entry that was originally entered for this file,
+    // and set the last tested timestamp to the current time.
+    db_query("UPDATE {pift_data} SET display_data = '%s', status = %d, timestamp = %d WHERE ftid = %d", $file['display_data'], $file['status'], $time, $file['ftid']);
     $ftids[] = $file['ftid'];
   }
   pift_server_mail_failed_tests($ftids);
