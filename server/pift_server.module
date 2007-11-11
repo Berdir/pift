@@ -146,6 +146,13 @@ function pift_server_settings_form() {
     '#description' => t("How often new files should be sent to test servers."),
   );
 
+  // Warn about node access and login security issues.
+  $form['pift_server_access_warning'] = array(
+    '#prefix' => '<div class="pift-server-warning">',
+    '#suffix' => '</div>',
+    '#value' => t('IMPORTANT:<p>The file test server does not perform node access checks related to the sending of file testing information. Only trust test servers that you have control over, as they are getting access to node information related to any file test sent, regardless of any node access control you impose on your site.</p><p>Keep the login information below confidential.</p>')
+  );
+
   $form['pift_server_sites'] = array(
     '#type' => 'textarea',
     '#title' => t('Test sites'),
@@ -315,14 +322,10 @@ function pift_server_menu($may_cache) {
     );
   }
   else {
-    // Include the CSS file for the file test results table, if we're at an issue node.
-    if (arg(0) == 'node' && is_numeric(arg(1))) {
-      $node = node_load(arg(1));
-      if ($node->type == 'project_issue') {
-        drupal_add_css(drupal_get_path('module', 'pift_server') .'/pift_server.css');
-      }
-    }
+    // Include the CSS file.
+    drupal_add_css(drupal_get_path('module', 'pift_server') .'/pift_server.css');
   }
+
   return $items;
 }
 

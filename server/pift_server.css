@@ -7,3 +7,8 @@ div.file-test-results table tr.pift-passed {
 div.file-test-results table tr.pift-failed {
   background-color: #FF9999 !important;
 }
+
+div.pift-server-warning {
+  font-weight: bold;
+  color: red;
+}

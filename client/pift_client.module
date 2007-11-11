@@ -35,6 +35,13 @@ function pift_client_perm() {
  */
 function pift_client_settings_form() {
 
+  // Warn about login security issues.
+  $form['pift_client_access_warning'] = array(
+    '#prefix' => '<div class="pift-client-warning">',
+    '#suffix' => '</div>',
+    '#value' => t('IMPORTANT:<p>Keep the login information below confidential.</p>')
+  );
+
   $form['pift_client_sites'] = array(
     '#type' => 'textarea',
     '#title' => t('File test server sites'),
@@ -72,6 +79,11 @@ function pift_client_menu($may_cache) {
       'type' => MENU_NORMAL_ITEM,
     );
   }
+  else {
+    // Include the CSS file.
+    drupal_add_css(drupal_get_path('module', 'pift_client') .'/pift_client.css');
+  }
+
   return $items;
 }
 
