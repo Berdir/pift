@@ -371,7 +371,7 @@ function pift_server_get_newest() {
  * recently posted issue/followup, sets the last sent
  * time to the current time, and empties the send queue.
  */
-function pift_server_reset_send_queue () {
+function pift_server_reset_send_queue() {
   $newest = pift_server_get_newest();
   variable_set('pift_server_last_issue_file_processed', $newest['issue']);
   variable_set('pift_server_last_followup_file_processed', $newest['followup']);
@@ -963,7 +963,7 @@ function pift_server_xmlrpc_error_handler($server, $error_code = NULL) {
 
   $t_args = array('%url' => $base_url, '%xmlrpc_url' => $server['xmlrpc_url'], '%user' => $server['user']);
 
-  switch($error_code) {
+  switch ($error_code) {
     case 'PIFT_XMLRPC_INVALID_SERVER':
       watchdog('project_remote', t('%url is not listed as a valid project server at test server %xmlrpc_url', $t_args), WATCHDOG_ERROR);
       break;

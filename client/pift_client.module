@@ -354,7 +354,7 @@ function pift_client_xmlrpc_error_handler($server, $error_code = NULL) {
 
   $t_args = array('%url' => $base_url, '%xmlrpc_url' => $server['xmlrpc_url'], '%user' => $server['user']);
 
-  switch($error_code) {
+  switch ($error_code) {
     case 'PIFT_XMLRPC_INVALID_SERVER':
       watchdog('project_remote', t('%url is not listed as a valid test server at project server %xmlrpc_url', $t_args), WATCHDOG_ERROR);
       break;
