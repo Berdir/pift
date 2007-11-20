@@ -394,8 +394,8 @@ function pift_server_add_new_files() {
   $data['issues'] = array();
   $data['followups'] = array();
 
-  // Pull all new issue data. Limit the results to PIFT_SEND_LIMIT for consistency.
-  $issue_files = db_query_range("SELECT n.nid, n.uid, f.fid, f.filepath FROM {node} n INNER JOIN {files} f ON n.nid = f.nid WHERE n.type = 'project_issue' AND f.fid > %d AND f.fid <= %d AND f.filepath <> '' ORDER BY n.nid, f.fid", $last['issue'], $newest['issue'], 0, PIFT_SEND_LIMIT);
+  // Pull all new issue data. Limit the results to 5 times the PIFT_SEND_LIMIT for consistency.
+  $issue_files = db_query_range("SELECT n.nid, n.uid, f.fid, f.filepath FROM {node} n INNER JOIN {files} f ON n.nid = f.nid WHERE n.type = 'project_issue' AND f.fid > %d AND f.fid <= %d AND f.filepath <> '' ORDER BY n.nid, f.fid", $last['issue'], $newest['issue'], 0, PIFT_SEND_LIMIT * 5);
 
   while ($file = db_fetch_object($issue_files)) {
     // Update last processed here, in case the server dies during the run.
@@ -408,8 +408,8 @@ function pift_server_add_new_files() {
     }
   }
 
-  // Pull all new followup file data. Limit the results to PIFT_SEND_LIMIT for consistency.
-  $followup_files = db_query_range("SELECT n.nid, c.cid, c.uid, cu.fid, cu.filepath FROM {node} n INNER JOIN {comments} c ON n.nid = c.nid INNER JOIN {comment_upload_files} cu ON c.cid = cu.cid WHERE n.type = 'project_issue' AND cu.fid > %d AND cu.fid <= %d AND cu.filepath <> '' ORDER BY c.cid, cu.fid", $last['followup'], $newest['followup'], 0, PIFT_SEND_LIMIT);
+  // Pull all new followup file data. Limit the results to 5 times the PIFT_SEND_LIMIT for consistency.
+  $followup_files = db_query_range("SELECT n.nid, c.cid, c.uid, cu.fid, cu.filepath FROM {node} n INNER JOIN {comments} c ON n.nid = c.nid INNER JOIN {comment_upload_files} cu ON c.cid = cu.cid WHERE n.type = 'project_issue' AND cu.fid > %d AND cu.fid <= %d AND cu.filepath <> '' ORDER BY c.cid, cu.fid", $last['followup'], $newest['followup'], 0, PIFT_SEND_LIMIT * 5);
 
   while ($file = db_fetch_object($followup_files)) {
     // Update last processed here, in case the server dies during the run.
@@ -493,6 +493,11 @@ function pift_server_send_file_data() {
   // Restrict to listed projects, if set.
   if (PIFT_PROJECTS) {
     $where .= ' AND p.nid IN ('. PIFT_PROJECTS .')';
+  }
+
+  // Restrict to the status list, if set.
+  if (PIFT_RETEST_STATUS) {
+    $where .= ' AND pi.sid IN ('. PIFT_RETEST_STATUS .')';
   }
 
   // Pull issue files that need to be sent for testing.  These include:
