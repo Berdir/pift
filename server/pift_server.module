@@ -918,7 +918,7 @@ function theme_pift_server_results($results) {
           'data' => array(
             $description,
             t('passed'),
-            $result['display_data'],
+            $result['display_data'],  // Already filtered.
           ),
           'class' => 'pift-passed',
         );
@@ -929,7 +929,7 @@ function theme_pift_server_results($results) {
           'data' => array(
             $description,
             t('failed'),
-            $result['display_data'],
+            $result['display_data'],  // Already filtered.
           ),
           'class' => 'pift-failed',
         );
