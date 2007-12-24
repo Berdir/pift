@@ -11,18 +11,11 @@ define('PIFT_SEND_LIMIT', variable_get('pift_send_limit', 100));
 define('PIFT_BATCH_SIZE', variable_get('pift_batch_size', 20));
 // Regex for determining which file types should be sent for testing.
 define('PIFT_FILE_REGEX', variable_get('pift_file_regex', '/(\.diff|\.patch)$/'));
-// A comma separated list of project ID's (nids) that will be examined for
-// new files. Leave empty for all projects.
-define('PIFT_PROJECTS', variable_get('pift_projects', ''));
 // Number of hours to wait before resending an untested file to a test
 // server (ie, the test server never sent back the results).
 define('PIFT_RESEND_TIME', variable_get('pift_resend_time', 2));
 // Number of hours to wait before retesting a previously passes file.
 define('PIFT_RETEST_TIME', variable_get('pift_retest_time', 24));
-// Re-test previously passed tests that have the the following status
-// (should be a comma separated list of sids). Leave empty to re-test
-// every status.
-define('PIFT_RETEST_STATUS', variable_get('pift_retest_status', ''));
 
 // File testing status definitions.
 define('PIFT_UNTESTED', 0);
@@ -443,22 +436,25 @@ function pift_server_retest_check() {
 
   $where = '';
   $where_parts = array();
+  $args = array(PIFT_RETEST, PIFT_PASSED, $retest_time);
 
   // Restrict to listed projects, if set.
-  if (PIFT_PROJECTS) {
-    $where_parts[] = ' p.nid IN ('. PIFT_PROJECTS .')';
+  if ($projects = pift_server_project_list()) {
+    $where_parts[] = ' p.nid IN ('. implode(',', array_fill(0, count($projects), '%d')) .')';
+    $args = array_merge($args, $projects);
   }
 
   // Restrict to the status list, if set.
-  if (PIFT_RETEST_STATUS) {
-    $where_parts[] = 'pi.sid IN ('. PIFT_RETEST_STATUS .')';
+  if ($status_list = pift_server_status_list()) {
+    $where_parts[] = 'pi.sid IN ('. implode(',', array_fill(0, count($status_list), '%d')) .')';
+    $args = array_merge($args, $status_list);
   }
 
   if (!empty($where_parts)) {
     $where .= " AND nid IN (SELECT pi.nid FROM {project_issues} pi INNER JOIN {node} p ON p.nid = pi.pid WHERE ". implode(' AND ', $where_parts) .")";
   }
 
-  db_query("UPDATE {pift_data} SET status = %d WHERE status = %d AND timestamp < %d$where", PIFT_RETEST, PIFT_PASSED, $retest_time);
+  db_query("UPDATE {pift_data} SET status = %d WHERE status = %d AND timestamp < %d$where", $args);
 }
 
 /**
@@ -489,23 +485,30 @@ function pift_server_send_file_data() {
   $resend_time = time() - (PIFT_RESEND_TIME * 60 * 60);
 
   $where = '';
+  $where_args = array();
+  $sub_query_args = array(PIFT_UNTESTED, $resend_time, PIFT_RETEST, 0);
 
   // Restrict to listed projects, if set.
-  if (PIFT_PROJECTS) {
-    $where .= ' AND p.nid IN ('. PIFT_PROJECTS .')';
+  if ($projects = pift_server_project_list()) {
+    $where .= ' AND p.nid IN ('. implode(',', array_fill(0, count($projects), '%d')) .')';
+    $where_args = array_merge($where_args, $projects);
   }
 
   // Restrict to the status list, if set.
-  if (PIFT_RETEST_STATUS) {
-    $where .= ' AND pi.sid IN ('. PIFT_RETEST_STATUS .')';
+  if ($status_list = pift_server_status_list()) {
+    $where .= ' AND pi.sid IN ('. implode(',', array_fill(0, count($status_list), '%d')) .')';
+    $where_args = array_merge($where_args, $status_list);
   }
+
+  // Assemble final args.
+  $args = array_merge($sub_query_args, $where_args, $sub_query_args, $where_args);
 
   // Pull issue files that need to be sent for testing.  These include:
   // 1. All files marked as untested that have exceeded the resend period.
   //    since their last send (includes newly added files).
   // 2. All files that have been marked for re-testing.
   // This is one god awful query...  :(
-  $files = db_query_range("(SELECT pd.ftid, n.nid AS issue_id, n.title AS issue_title, n.uid, pi.pid, pi.rid, f.filepath AS patch_url, p.title AS project, u.name AS submitter$select FROM {pift_data} pd INNER JOIN {project_issues} pi ON pd.nid = pi.nid INNER JOIN {files} f ON pd.fid = f.fid INNER JOIN {node} n ON n.nid = pi.nid INNER JOIN {node} p ON p.nid = pi.pid INNER JOIN {users} u ON u.uid = pd.uid$join WHERE ((pd.status = %d AND pd.timestamp < %d) OR pd.status = %d) AND pd.cid = %d$where) UNION (SELECT pd.ftid, n.nid AS issue_id, n.title AS issue_title, n.uid, pi.pid, pi.rid, cu.filepath AS patch_url, p.title AS project, u.name AS submitter$select FROM {pift_data} pd INNER JOIN {project_issues} pi ON pd.nid = pi.nid INNER JOIN {comment_upload_files} cu ON pd.fid = cu.fid INNER JOIN {node} n ON n.nid = pi.nid INNER JOIN {node} p ON p.nid = pi.pid INNER JOIN {users} u ON u.uid = pd.uid$join WHERE ((pd.status = %d AND pd.timestamp < %d) OR pd.status = %d) AND pd.cid <> %d$where) ORDER BY ftid", PIFT_UNTESTED, $resend_time, PIFT_RETEST, 0, PIFT_UNTESTED, $resend_time, PIFT_RETEST, 0, 0, PIFT_SEND_LIMIT);
+  $files = db_query_range("(SELECT pd.ftid, n.nid AS issue_id, n.title AS issue_title, n.uid, pi.pid, pi.rid, f.filepath AS patch_url, p.title AS project, u.name AS submitter$select FROM {pift_data} pd INNER JOIN {project_issues} pi ON pd.nid = pi.nid INNER JOIN {files} f ON pd.fid = f.fid INNER JOIN {node} n ON n.nid = pi.nid INNER JOIN {node} p ON p.nid = pi.pid INNER JOIN {users} u ON u.uid = pd.uid$join WHERE ((pd.status = %d AND pd.timestamp < %d) OR pd.status = %d) AND pd.cid = %d$where) UNION (SELECT pd.ftid, n.nid AS issue_id, n.title AS issue_title, n.uid, pi.pid, pi.rid, cu.filepath AS patch_url, p.title AS project, u.name AS submitter$select FROM {pift_data} pd INNER JOIN {project_issues} pi ON pd.nid = pi.nid INNER JOIN {comment_upload_files} cu ON pd.fid = cu.fid INNER JOIN {node} n ON n.nid = pi.nid INNER JOIN {node} p ON p.nid = pi.pid INNER JOIN {users} u ON u.uid = pd.uid$join WHERE ((pd.status = %d AND pd.timestamp < %d) OR pd.status = %d) AND pd.cid <> %d$where) ORDER BY ftid", $args, 0, PIFT_SEND_LIMIT);
 
   // Nothing to do.
   if (!db_num_rows($files)) {
@@ -992,12 +995,44 @@ function pift_server_xmlrpc_error_handler($server, $error_code = NULL) {
  *   is empty.  FALSE otherwise.
  */
 function pift_server_active_project($pid) {
-  if ($projects = PIFT_PROJECTS) {
-    $projects = explode(',', $projects);
-    $projects = array_map('trim', $projects);
+  if ($projects = pift_server_project_list()) {
     return in_array($pid, $projects);
   }
   else {
     return TRUE;
+  }
+}
+
+/**
+ * Formats the active project list into an array.
+ *
+ * @return
+ *   An array of the active projects that will be examined for testing.
+ */
+function pift_server_project_list() {
+  if ($projects = variable_get('pift_projects', '')) {
+    $projects = explode(',', $projects);
+    $projects = array_map('trim', $projects);
+    return $projects;
+  }
+  else {
+    return array();
+  }
+}
+
+/**
+ * Formats the active status list into an array.
+ *
+ * @return
+ *   An array of the statuses that will be examined for re-testing.
+ */
+function pift_server_status_list() {
+  if ($status_list = variable_get('pift_retest_status', '')) {
+    $status_list = explode(',', $status_list);
+    $status_list = array_map('trim', $status_list);
+    return $status_list;
+  }
+  else {
+    return array();
   }
 }
