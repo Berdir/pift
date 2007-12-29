@@ -427,7 +427,7 @@ function pift_server_add_new_files() {
 function pift_server_retest_check() {
 
   // Never re-test files.
-  if (PIFT_RESEND_TIME == '-1') {
+  if (PIFT_RETEST_TIME == '-1') {
     return;
   }
 
