@@ -9,8 +9,8 @@ define('PIFT_FAILED', 2);
 /**
  * Implementation of hook_help().
  */
-function pift_client_help($section) {
-  switch ($section) {
+function pift_client_help($path, $arg) {
+  switch ($path) {
     // Admin settings page.
     case 'admin/settings/project-issue-file-test-client':
       return t("
@@ -33,7 +33,7 @@ function pift_client_perm() {
 /**
  * Callback for the main settings page.
  */
-function pift_client_settings_form() {
+function pift_client_settings_form(&$form_state) {
 
   // Warn about login security issues.
   $form['pift_client_access_warning'] = array(
@@ -55,29 +55,30 @@ function pift_client_settings_form() {
 /**
  * Implementation of hook_menu().
  */
-function pift_client_menu($may_cache) {
+function pift_client_menu() {
   $items = array();
 
-  if ($may_cache) {
-    $access_admin = user_access('administer file test client');
-
-    // Admin page.
-    $items[] = array(
-      'path' => 'admin/settings/project-issue-file-test-client',
-      'title' => t('Project issue file test client settings'),
-      'description' => t('Configure receiving of project issue file test data.'),
-      'callback' => 'drupal_get_form',
-      'callback arguments' => array('pift_client_settings_form'),
-      'access' => $access_admin,
-      'type' => MENU_NORMAL_ITEM,
-    );
-  }
-  else {
-    // Include the CSS file.
-    drupal_add_css(drupal_get_path('module', 'pift_client') .'/pift_client.css');
-  }
+  // Admin page.
+  $items['admin/settings/project-issue-file-test-client'] = array(
+    'title' => 'Project issue file test client settings',
+    'description' => 'Configure receiving of project issue file test data.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('pift_client_settings_form'),
+    'access callback' => 'user_access',
+    'access arguments' => array('administer file test client'),
+    'type' => MENU_NORMAL_ITEM,
+  );
 
   return $items;
+}
+
+/**
+ * Implementation of hook_init()
+ */
+function pift_client_init() {
+
+  // Include the CSS file.
+  drupal_add_css(drupal_get_path('module', 'pift_client') .'/pift_client.css');
 }
 
 /**
@@ -167,7 +168,7 @@ function pift_client_test_files($server, $files) {
 
   // No servers, bail.
   if (empty($valid_servers)) {
-    watchdog('project_remote', t('Testing aborted -- no valid project servers.'), WATCHDOG_ERROR);
+    watchdog('project_remote', 'Testing aborted -- no valid project servers.', array(), WATCHDOG_ERROR);
     return array('error' => 'PIFT_XMLRPC_INVALID_SERVER');
   }
 
@@ -182,13 +183,13 @@ function pift_client_test_files($server, $files) {
     }
     // Bad login.
     else {
-      watchdog('project_remote', t('Invalid user %user tried to send project issue file test data.', array('%user' => $server['user'])), WATCHDOG_WARNING);
+      watchdog('project_remote', 'Invalid user %user tried to send project issue file test data.', array('%user' => $server['user']), WATCHDOG_WARNING);
       return array('error' => 'PIFT_XMLRPC_INVALID_USER');
     }
   }
   // Bad server.
   else {
-    watchdog('project_remote', t('%server attempted to send file test data, and is not on the valid server list.', array('%server' => $server['url'])), WATCHDOG_WARNING);
+    watchdog('project_remote', '%server attempted to send file test data, and is not on the valid server list.', array('%server' => $server['url']), WATCHDOG_WARNING);
     return array('error' => 'PIFT_XMLRPC_INVALID_SERVER');
   }
 }
@@ -331,7 +332,7 @@ function pift_client_send_test_results($project_server, $files) {
     pift_server_xmlrpc_error_handler($server, $result['error']);
   }
   else {
-    watchdog('project_remote', t('File test results sent successfully to %project_server', array('%project_server' => $project_server)));
+    watchdog('project_remote', 'File test results sent successfully to %project_server', array('%project_server' => $project_server));
   }
 }
 
@@ -341,7 +342,7 @@ function pift_client_send_test_results($project_server, $files) {
 function pift_client_validate_user($username, $password) {
   global $user;
 
-  $user = user_authenticate($username, $password);
+  $user = user_authenticate(array('name' => $username, 'pass' => $password));
 
   if ($user->uid) {
     if (user_access('receive file test data', $user)) {
@@ -371,13 +372,13 @@ function pift_client_xmlrpc_error_handler($server, $error_code = NULL) {
 
   switch ($error_code) {
     case 'PIFT_XMLRPC_INVALID_SERVER':
-      watchdog('project_remote', t('%url is not listed as a valid test server at project server %xmlrpc_url', $t_args), WATCHDOG_ERROR);
+      watchdog('project_remote', '%url is not listed as a valid test server at project server %xmlrpc_url', $t_args, WATCHDOG_ERROR);
       break;
     case 'PIFT_XMLRPC_INVALID_USER':
-      watchdog('project_remote', t('Unable to log in %url to %xmlrpc_url using user %user, due to invalid login credentials or insufficient user permissions.', $t_args), WATCHDOG_ERROR);
+      watchdog('project_remote', 'Unable to log in %url to %xmlrpc_url using user %user, due to invalid login credentials or insufficient user permissions.', $t_args, WATCHDOG_ERROR);
       break;
     default:
-      watchdog('project_remote', t('XML-RPC error communicating with %xmlrpc_url', $t_args), WATCHDOG_ERROR);
+      watchdog('project_remote', 'XML-RPC error communicating with %xmlrpc_url', $t_args, WATCHDOG_ERROR);
       break;
   }
 }
