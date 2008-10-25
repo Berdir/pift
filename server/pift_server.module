@@ -239,6 +239,14 @@ function pift_server_settings_form() {
     '#validate' => array('pift_server_is_numeric_validate' => array()),
   );
 
+  $form['advanced']['pift_projects'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Projects to test'),
+    '#description' => t("A comma separated list of project ID's (nids) that will be examined for new files. Leave empty for all projects."),
+    '#default_value' => variable_get('pift_projects', ''),
+    '#validate' => array('pift_server_comma_separated_numeric_validate' => array()),
+  );
+
   $form['advanced']['pift_retest_status'] = array(
     '#type' => 'textfield',
     '#title' => t('List of project statuses to re-test'),
@@ -247,13 +255,14 @@ function pift_server_settings_form() {
     '#validate' => array('pift_server_comma_separated_numeric_validate' => array()),
   );
 
-  $form['advanced']['pift_projects'] = array(
-    '#type' => 'textarea',
-    '#title' => t('Projects to test'),
-    '#description' => t("A comma separated list of project ID's (nids) that will be examined for new files. Leave empty for all projects."),
-    '#default_value' => variable_get('pift_projects', ''),
-    '#validate' => array('pift_server_comma_separated_numeric_validate' => array()),
-  );
+  if (module_exists('project_release')) {
+    $form['advanced']['pift_server_release_tag_regex'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Release tag REGEXP'),
+      '#description' => t("Enter a MySQL-compatible REGEXP to restrict file testing by the tag column in {project_release_nodes}, for example, <em>^HEAD$</em> -- leave blank for no release tag filtering. "),
+      '#default_value' => variable_get('pift_server_release_tag_regex', ''),
+    );
+  }
 
   // Custom submit handler
   $form['#submit']['pift_server_settings_form_extra_submit'] = array();
@@ -457,8 +466,21 @@ function pift_server_retest_check() {
     $args = array_merge($args, $status_list);
   }
 
+  // Add in release info if it exists.
+  if (module_exists('project_release')) {
+    // Restrict to release tag, if set.
+    if ($release_tag_regex = variable_get('pift_server_release_tag_regex', '')) {
+      $join = ' INNER JOIN {project_release_nodes} prn ON pi.rid = prn.nid';
+      $where_parts[] = "prn.tag REGEXP '%s'";
+      $args[] = $release_tag_regex;
+    }
+    else {
+      $join = '';
+    }
+  }
+
   if (!empty($where_parts)) {
-    $where .= " AND nid IN (SELECT pi.nid FROM {project_issues} pi INNER JOIN {node} p ON p.nid = pi.pid WHERE ". implode(' AND ', $where_parts) .")";
+    $where .= " AND nid IN (SELECT pi.nid FROM {project_issues} pi INNER JOIN {node} p ON p.nid = pi.pid$join WHERE ". implode(' AND ', $where_parts) .")";
   }
 
   db_query("UPDATE {pift_data} SET status = %d WHERE status = %d AND timestamp < %d$where", $args);
@@ -503,16 +525,6 @@ function pift_server_send_file_data() {
     return;
   }
 
-  // Add in release info if it exists.
-  if (module_exists('project_release')) {
-    $select = ', prn.version';
-    $join = ' LEFT JOIN {project_release_nodes} prn ON pi.rid = prn.nid';
-  }
-  else {
-    $select = '';
-    $join = '';
-  }
-
   // Set up the resend time limit.
   $resend_time = time() - (PIFT_RESEND_TIME * 60 * 60);
 
@@ -530,6 +542,21 @@ function pift_server_send_file_data() {
   if ($status_list = pift_server_status_list()) {
     $where .= ' AND pi.sid IN ('. implode(',', array_fill(0, count($status_list), '%d')) .')';
     $where_args = array_merge($where_args, $status_list);
+  }
+
+  // Add in release info if it exists.
+  if (module_exists('project_release')) {
+    $select = ', prn.version, prn.tag';
+    $join = ' LEFT JOIN {project_release_nodes} prn ON pi.rid = prn.nid';
+    // Restrict to release tag, if set.
+    if ($release_tag_regex = variable_get('pift_server_release_tag_regex', '')) {
+      $where .= " AND prn.tag REGEXP '%s'";
+      $where_args[] = $release_tag_regex;
+    }
+  }
+  else {
+    $select = '';
+    $join = '';
   }
 
   // Assemble final args.
