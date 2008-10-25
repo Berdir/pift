@@ -488,6 +488,39 @@ function pift_server_retest_check() {
 
 /**
  * Sends file data to test servers, in a round robin approach.
+ *
+ * The files will be sent via XML-RPC to any servers listed on the settings page,
+ * which also have a valid Project issue file review module installed and configured
+ * with the server key of the PIFT server (available on the PIFT server settings page).
+ *
+ * The files will be sent in an array, each element of which is an associative array
+ * with the following key/value pairs:
+ *
+ *     'ftid'          => The file test ID that was originally passed from
+ *                       the test server for the file in question.
+ *
+ *     'cid'           => The comment ID of the comment the patch is
+ *                        attached to.
+ *
+ *     'pid'           => The project ID.
+ *
+ *     'rid'           => The release ID.
+ *
+ *     'uid'           => The uid of the user who submitted the file.
+ *
+ *     'issue_id'      => nid of the issue.
+ *
+ *     'issue_title'   => Title of the issue.
+ *
+ *     'project'       => Project the patch is for.
+ *
+ *     'version'       => Project version string.
+ *
+ *     'tag'           => Release tag as found in {project_release_nodes}.
+ *
+ *     'submitter'     => Drupal user submitting the patch.
+ *
+ *     'patch_url'     => The absolute URL for the file.
  */
 function pift_server_send_file_data() {
   global $base_url;
@@ -652,7 +685,7 @@ function pift_server_xmlrpc() {
     array(
       'pift.test.results',
       'pift_server_process_test_results',
-      array('boolean', 'struct', 'struct'),
+      array('struct', 'struct', 'struct'),
       t('receive file test results from a test server')
     ),
   );
@@ -663,9 +696,9 @@ function pift_server_xmlrpc() {
  *
  * @param $server
  *   An associative array of login parameters, as follows:
- *     'user' => The username to log in.
- *     'pass' => The user's password.
- *     'url'  => The Drupal base URL of the server sending the data.
+ *     'url'        => The Full XML-RPC URL of the server sending the
+ *                      data, ex. http://example.com/xmlrpc.php
+ *     'server_key' => The server key for the server sending the data.
  *
  * @param $files
  *   An array of files to process. Each element an associative array
@@ -679,7 +712,9 @@ function pift_server_xmlrpc() {
  *                       when rendering the file test results.
  *
  * @return
- *   TRUE if the test data was properly validated, FALSE otherwise.
+ *   An empty array if the test data was properly validated,
+ *   otherwise an associative array with these key/value pairs:
+ *     'error' => PIFT_XMLRPC_INVALID_SERVER | PIFT_XMLRPC_INVALID_SERVER_KEY
  */
 function pift_server_process_test_results($server, $files) {
   // Build an array of valid test servers for this install.
