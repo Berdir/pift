@@ -143,14 +143,21 @@ function pift_server_settings_form() {
   $form['pift_server_access_warning'] = array(
     '#prefix' => '<div class="pift-server-warning">',
     '#suffix' => '</div>',
-    '#value' => t('IMPORTANT:<p>The file test server does not perform node access checks related to the sending of file testing information. Only trust test servers that you have control over, as they are getting access to node information related to any file test sent, regardless of any node access control you impose on your site.</p><p>Keep the login information below confidential.</p>')
+    '#value' => t('IMPORTANT:<p>The file test server does not perform node access checks related to the sending of file testing information. Only trust test servers that you have control over, as they are getting access to node information related to any file test sent, regardless of any node access control you impose on your site.</p><p>Keep all server keys listed below confidential.</p>')
+  );
+
+  $form['pift_server_server_key'] = array(
+    '#type' => 'item',
+    '#title' => t('Server key'),
+    '#value' => pift_server_server_key(),
+    '#description' => t("This key must be entered in the <em>Project issue file review</em> settings on any test server you wish to send files to."),
   );
 
   $form['pift_server_sites'] = array(
     '#type' => 'textarea',
     '#title' => t('Test sites'),
     '#default_value' => variable_get('pift_server_sites', ''),
-    '#description' => t("List the login information and servers that will receive files for testing. Each site to receive information must have the <em>Project issue file test client</em> module installed, and you must include valid login information for a Drupal user on the test site who has the 'receive file test data' permission. Put one remote site per line, in the following format: <em>user::password::xmlrpc-url</em>. For example, <em>myusername::mypassword::http://example.com/xmlrpc.php</em>"),
+    '#description' => t("List the login information and servers that will receive files for testing. Each site to receive information must have the <em>Project issue file review</em> module installed, and you must include the remote server's private key. Put one remote site per line, in the following format: <em>key@xmlrpc-url</em>. For example, <em>testserversecretkey@http://example.com/xmlrpc.php</em>"),
   );
 
   $form['pift_server_file_description'] = array(
@@ -466,6 +473,31 @@ function pift_server_send_file_data() {
   // Get servers if any exist.
   if ($all_server_data = variable_get('pift_server_sites', '')) {
     $all_server_data = explode("\n", $all_server_data);
+    $servers = array();
+    $i = 0;
+
+    // Set up the test servers.
+    foreach ($all_server_data as $server_data) {
+      if ($server_data) {
+        // Set up the login data for the server. The test server needs
+        // it's server key for authentication.
+        $server_data = explode('@', $server_data);
+        $server['server_key'] = $server_data[0];
+        $server['xmlrpc_url'] = $server_data[1];
+        // Basic testing to make sure the XML-RPC URL isn't totally bogus.
+        if (preg_match('/^(http|https):\/\/.+\/xmlrpc.php/', $server['xmlrpc_url'])) {
+          $i++;
+          $servers[$i] = $server;
+        }
+        // Bad server URL.
+        else {
+          watchdog('project_remote', t('%server is an invalid URL.', array('%server' => $server_xmlrpc_url)), WATCHDOG_ERROR);
+        }
+      }
+    }
+    if (empty($servers)) {
+      return;
+    }
   }
   else {
     return;
@@ -544,35 +576,12 @@ function pift_server_send_file_data() {
     }
   }
 
-  $servers = array();
-  $i = 0;
-
-  // Set up the test servers.
-  foreach ($all_server_data as $server_data) {
-    if ($server_data) {
-      // Set up the login data for the server. The test server needs
-      // a username, password, and the base URL of the sending server.
-      $server_data = explode('::', $server_data);
-      $server['user'] = $server_data[0];
-      $server['pass'] = $server_data[1];
-      $server['url'] = $base_url .'/xmlrpc.php';
-      $server['xmlrpc_url'] = $server_data[2];
-      // Basic testing to make sure the XML-RPC URL isn't totally bogus.
-      if (preg_match('/^(http|https):\/\/.+\/xmlrpc.php/', $server['xmlrpc_url'])) {
-        $i++;
-        $servers[$i] = $server;
-      }
-      // Bad server URL.
-      else {
-        watchdog('project_remote', t('%server is an invalid URL.', array('%server' => $server_xmlrpc_url)), WATCHDOG_ERROR);
-      }
-    }
-  }
-
   $sent = array();
 
   // Get the next server in the round robin cycle.
   $s = variable_get('pift_next_test_server', 1);
+
+  $server_key = pift_server_server_key();
 
   // Send batches, round robin.
   foreach ($batches as $bid => $batch) {
@@ -581,7 +590,7 @@ function pift_server_send_file_data() {
       $s = 1;
     }
     // Send batch.
-    $result = xmlrpc($servers[$s]['xmlrpc_url'], 'pift.test.files', $servers[$s], $batch);
+    $result = xmlrpc($servers[$s]['xmlrpc_url'], 'pifr.batch.queue', $server_key, $batch);
 
     // Failed XML-RPC call.
     if ($result === FALSE) {
@@ -606,23 +615,6 @@ function pift_server_send_file_data() {
   if (!empty($sent)) {
     watchdog('project_remote', t('Project issue data sent successfully to the following servers:!servers', array('!servers' => theme('item_list', $sent))));
   }
-}
-
-/**
- * Ensure that the given user has permission to return file test results.
- */
-function pift_server_validate_user($username, $password) {
-  global $user;
-
-  $user = user_authenticate($username, $password);
-
-  if ($user->uid) {
-    if (user_access('administer projects', $user)) {
-      return $user;
-    }
-  }
-
-  return FALSE;
 }
 
 /**
@@ -668,26 +660,26 @@ function pift_server_process_test_results($server, $files) {
   $valid_servers = array();
   foreach ($test_servers as $test_server) {
     if ($test_server) {
-      $parts = explode('::', $test_server);
-      $valid_servers[] = $parts[2];
+      $parts = explode('@', $test_server);
+      $valid_servers[$parts[1]] = $parts[0];
     }
   }
   // Validate the test server URL against the list of valid test servers.
-  if (in_array($server['url'], $valid_servers)) {
-    // Validate the user submitting the test results.
-    if (pift_server_validate_user($server['user'], $server['pass'])) {
+  if (isset($valid_servers[$server['url']])) {
+    // Validate the server key for the test server.
+    if ($valid_servers[$server['url']] == $server['server_key']) {
       pift_server_process_files($files);
       return array();
     }
     // Bad login.
     else {
-      watchdog('project_remote', t('Invalid user %user tried to send project issue file test data.', array('%user' => $server['user'])), WATCHDOG_WARNING);
-      return array('error' => 'PIFT_XMLRPC_INVALID_USER');
+      watchdog('project_remote', t('%server attempted to send file test data, and has an invalid server key.', array('%server' => $server['url'])), WATCHDOG_WARNING);
+      return array('error' => 'PIFT_XMLRPC_INVALID_SERVER_KEY');
     }
   }
   // Bad test server.
   else {
-    watchdog('project_remote', t('%server attempted to file test data, and is not on the valid server list.', array('%server' => $server['url'])), WATCHDOG_WARNING);
+    watchdog('project_remote', t('%server attempted to send file test data, and is not on the valid server list.', array('%server' => $server['url'])), WATCHDOG_WARNING);
     return array('error' => 'PIFT_XMLRPC_INVALID_SERVER');
   }
 }
@@ -969,14 +961,14 @@ function theme_pift_server_results($results) {
 function pift_server_xmlrpc_error_handler($server, $error_code = NULL) {
   global $base_url;
 
-  $t_args = array('%url' => $base_url, '%xmlrpc_url' => $server['xmlrpc_url'], '%user' => $server['user']);
+  $t_args = array('%url' => $base_url, '%xmlrpc_url' => $server['xmlrpc_url']);
 
   switch ($error_code) {
     case 'PIFT_XMLRPC_INVALID_SERVER':
       watchdog('project_remote', t('%url is not listed as a valid project server at test server %xmlrpc_url', $t_args), WATCHDOG_ERROR);
       break;
-    case 'PIFT_XMLRPC_INVALID_USER':
-      watchdog('project_remote', t('Unable to log in %url to %xmlrpc_url using user %user, due to invalid login credentials or insufficient user permissions.', $t_args), WATCHDOG_ERROR);
+    case 'PIFT_XMLRPC_INVALID_SERVER_KEY':
+      watchdog('project_remote', t('Unable to log in %url to %xmlrpc_url -- invalid server key.', $t_args), WATCHDOG_ERROR);
       break;
     default:
       watchdog('project_remote', t('XML-RPC error communicating with %xmlrpc_url', $t_args), WATCHDOG_ERROR);
@@ -1035,4 +1027,15 @@ function pift_server_status_list() {
   else {
     return array();
   }
+}
+
+/**
+ * Generates the XML-RPC server key.
+ *
+ * @return
+ *   The server key.
+ */
+function pift_server_server_key() {
+  global $base_url;
+  return md5(drupal_get_private_key() . $base_url);
 }
