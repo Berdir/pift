@@ -81,7 +81,7 @@ function pift_server_uninstall() {
     'pift_file_regex',
     'pift_resend_time',
     'pift_retest_time',
-    'pift_retest_status',
+    'pift_test_status',
     'pift_projects',
   );
 

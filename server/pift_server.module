@@ -247,11 +247,11 @@ function pift_server_settings_form() {
     '#validate' => array('pift_server_comma_separated_numeric_validate' => array()),
   );
 
-  $form['advanced']['pift_retest_status'] = array(
+  $form['advanced']['pift_test_status'] = array(
     '#type' => 'textfield',
-    '#title' => t('List of project statuses to re-test'),
-    '#description' => t("Re-test previously passed tests that have the following status (should be a comma separated list of issue sids). Leave empty to re-test every status."),
-    '#default_value' => variable_get('pift_retest_status', ''),
+    '#title' => t('List of project statuses to test'),
+    '#description' => t("Test files attached to issues that have the following issue statuses (should be a comma separated list of issue sids). Leave empty to test every status."),
+    '#default_value' => variable_get('pift_test_status', ''),
     '#validate' => array('pift_server_comma_separated_numeric_validate' => array()),
   );
 
@@ -1046,7 +1046,7 @@ function pift_server_project_list() {
  *   An array of the statuses that will be examined for re-testing.
  */
 function pift_server_status_list() {
-  if ($status_list = variable_get('pift_retest_status', '')) {
+  if ($status_list = variable_get('pift_test_status', '')) {
     $status_list = explode(',', $status_list);
     $status_list = array_map('trim', $status_list);
     return $status_list;
