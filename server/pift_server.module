@@ -664,7 +664,7 @@ function pift_server_send_file_data() {
     else {
       // Update the last sent timestamp for this batch of files.
       db_query("UPDATE {pift_data} SET timestamp = %d WHERE ftid IN (". implode(', ', $sent_files[$bid]) .")", time());
-      $sent[] = check_plain($servers[$s]['xmlrpc_url']);
+      $sent[] = check_plain($servers[$s]['xmlrpc_url']) .' -- '. format_plural(count($sent_files[$bid]), '1 file sent', '@count files sent');
     }
     // Next server in line.
     $s++;
