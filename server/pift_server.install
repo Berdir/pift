@@ -1,6 +1,5 @@
 <?php
 // $Id$
-// $Name$
 
 function pift_server_install() {
   // It seems the .module file isn't included yet, so include it manually...
