@@ -83,6 +83,7 @@ function pift_server_uninstall() {
     'pift_retest_time',
     'pift_test_status',
     'pift_projects',
+    'pift_server_release_tag_regex',
   );
 
   foreach ($vars as $var) {
