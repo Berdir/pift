@@ -66,9 +66,6 @@ function pift_server_install() {
 
 function pift_server_uninstall() {
   $vars = array(
-    'pift_server_last_issue_file_processed',
-    'pift_server_last_followup_file_processed',
-    'pift_server_reset_send_queue',
     'pift_server_sites',
     'pift_server_send_frequency',
     'pift_server_last_sent',
@@ -101,4 +98,14 @@ function pift_server_uninstall() {
   }
 
   drupal_set_message(t('The Project issue file test server module was uninstalled successfully.'));
+}
+
+/**
+ * Remove variables used for cron-based adding of files to {pift_data}.
+ */
+function pift_server_update_1() {
+  variable_del('pift_server_last_issue_file_processed');
+  variable_del('pift_server_last_followup_file_processed');
+
+  return array();
 }

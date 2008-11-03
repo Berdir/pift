@@ -36,7 +36,6 @@ function pift_server_cron() {
     $frequency = $send * 60;
     // Time to send again?
     if ($time > ($last_sent + $frequency)) {
-      pift_server_add_new_files();
       pift_server_retest_check();
       pift_server_send_file_data();
       // Update last sent time.
@@ -338,51 +337,11 @@ function pift_server_menu($may_cache) {
 }
 
 /**
- * Gets the most recently processed issue and comment ID.
- *
- * @return
- *   An associative array of information, as follows:
- *     'issue'    => The most recently processed issue nid.
- *     'followup' => The most recently processed comment cid.
- */
-function pift_server_get_last() {
-
-  $last_issue = variable_get('pift_server_last_issue_file_processed', 0);
-  $last_followup = variable_get('pift_server_last_followup_file_processed', 0);
-
-  return array('issue' => $last_issue, 'followup' => $last_followup);
-}
-
-/**
- * Gets the newest issue and comment ID.
- *
- * @return
- *   An associative array of information, as follows:
- *     'issue'    => The most recent issue nid.
- *     'followup' => The most recent comment cid.
- */
-function pift_server_get_newest() {
-
-  $newest_issue = db_result(db_query("SELECT MAX(fid) FROM {files}"));
-  // No result, set to zero.
-  $newest_issue = $newest_issue === FALSE ? 0 : $newest_issue;
-
-  $newest_followup_file = db_result(db_query("SELECT MAX(fid) FROM {comment_upload_files}"));
-  // No result, set to zero.
-  $newest_followup_file = $newest_followup_file === FALSE ? 0 : $newest_followup_file;
-
-  return array('issue' => $newest_issue, 'followup' => $newest_followup_file);
-}
-
-/**
  * Sets the last processed issue/followup to the most
  * recently posted issue/followup, sets the last sent
  * time to the current time, and empties the send queue.
  */
 function pift_server_reset_send_queue() {
-  $newest = pift_server_get_newest();
-  variable_set('pift_server_last_issue_file_processed', $newest['issue']);
-  variable_set('pift_server_last_followup_file_processed', $newest['followup']);
   variable_set('pift_server_last_sent', time());
   // Remove all untested files.
   // TODO: Do we really want to do this??
@@ -390,43 +349,39 @@ function pift_server_reset_send_queue() {
 }
 
 /**
- * Adds newly submitted issues/folowups to the send queue.
+ * Adds issue attachments matching PIFT_FILE_REGEX to the send queue.
+ *
+ * @param $files
+ *   An array of file objects.
  */
-function pift_server_add_new_files() {
-  global $base_url;
-
-  // Pull both the last items processed, and the newest items submitted.
-  // This is the range that we can enter into the queue during this run.
-  $last = pift_server_get_last();
-  $newest = pift_server_get_newest();
-  $data['issues'] = array();
-  $data['followups'] = array();
-
-  // Pull all new issue data. Limit the results to 5 times the PIFT_SEND_LIMIT for consistency.
-  $issue_files = db_query_range("SELECT n.nid, n.uid, f.fid, f.filepath FROM {node} n INNER JOIN {files} f ON n.nid = f.nid WHERE n.type = 'project_issue' AND f.fid > %d AND f.fid <= %d AND f.filepath <> '' ORDER BY n.nid, f.fid", $last['issue'], $newest['issue'], 0, PIFT_SEND_LIMIT * 5);
-
-  while ($file = db_fetch_object($issue_files)) {
-    // Update last processed here, in case the server dies during the run.
-    variable_set('pift_server_last_issue_file_processed', $file->fid);
-
-    // Put the file data into the send queue.
-    if (preg_match(PIFT_FILE_REGEX, basename($file->filepath)) && file_exists($file->filepath)) {
-      $ftid = db_next_id('{pift_data}_ftid');
-      db_query("INSERT INTO {pift_data} (ftid, fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, %d, '%s', %d, %d)", $ftid, $file->fid, $file->nid, 0, $file->uid, '', PIFT_UNTESTED, 0);
+function pift_server_add_issue_files($files) {
+  global $user;
+  if (is_array($files)) {
+    foreach ($files as $file) {
+      // Put the file data into the send queue.
+      if (preg_match(PIFT_FILE_REGEX, basename($file->filepath)) && file_exists($file->filepath)) {
+        $ftid = db_next_id('{pift_data}_ftid');
+        db_query("INSERT INTO {pift_data} (ftid, fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, %d, '%s', %d, %d)", $ftid, $file->fid, $file->nid, 0, $user->uid, '', PIFT_UNTESTED, 0);
+      }
     }
   }
+}
 
-  // Pull all new followup file data. Limit the results to 5 times the PIFT_SEND_LIMIT for consistency.
-  $followup_files = db_query_range("SELECT n.nid, c.cid, c.uid, cu.fid, cu.filepath FROM {node} n INNER JOIN {comments} c ON n.nid = c.nid INNER JOIN {comment_upload_files} cu ON c.cid = cu.cid WHERE n.type = 'project_issue' AND cu.fid > %d AND cu.fid <= %d AND cu.filepath <> '' ORDER BY c.cid, cu.fid", $last['followup'], $newest['followup'], 0, PIFT_SEND_LIMIT * 5);
-
-  while ($file = db_fetch_object($followup_files)) {
-    // Update last processed here, in case the server dies during the run.
-    variable_set('pift_server_last_followup_file_processed', $file->fid);
-
-    // Put the file data into the send queue.
-    if (preg_match(PIFT_FILE_REGEX, basename($file->filepath)) && file_exists($file->filepath)) {
-      $ftid = db_next_id('{pift_data}_ftid');
-      db_query("INSERT INTO {pift_data} (ftid, fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, %d, '%s', %d, %d)", $ftid, $file->fid, $file->nid, $file->cid, $file->uid, '', PIFT_UNTESTED, 0);
+/**
+ * Add followup attachments matching PIFT_FILE_REGEX to the send queue.
+ *
+ * @param $files
+ *   An array of file objects.
+ */
+function pift_server_add_followup_files($files) {
+  global $user;
+  if (is_array($files)) {
+    foreach ($files as $file) {
+      // Put the file data into the send queue.
+      if (preg_match(PIFT_FILE_REGEX, basename($file->filepath)) && file_exists($file->filepath)) {
+        $ftid = db_next_id('{pift_data}_ftid');
+        db_query("INSERT INTO {pift_data} (ftid, fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, %d, '%s', %d, %d)", $ftid, $file->fid, $file->nid, $file->cid, $user->uid, '', PIFT_UNTESTED, 0);
+      }
     }
   }
 }
@@ -830,44 +785,51 @@ function pift_server_mail_failed_tests($ftids) {
  * Implementation of hook_nodeapi().
  */
 function pift_server_nodeapi(&$node, $op, $arg) {
-  // Only display test results for issue nodes when it's a full view.
-  if ($node->type == 'project_issue' && arg(0) == 'node' && is_numeric(arg(1))) {
-    switch ($op) {
-      case 'view':
-        // Pull file attachments for this issue node.
-        $result = db_query("SELECT f.filepath, pd.display_data, pd.status FROM {pift_data} pd INNER JOIN {files} f ON pd.fid = f.fid WHERE pd.nid = %d AND pd.cid = %d AND f.filepath <> '' AND pd.status <> %d ORDER BY ftid", $node->nid, 0, PIFT_UNTESTED);
-        $display = array();
+  if ($node->type == 'project_issue') {
+    // Add attachments for this node to the send queue.
+    if ($op == 'insert') {
+      $files = upload_load($node);
+      pift_server_add_issue_files($files);
+    }
+    // Only display test results for issue nodes when it's a full view.
+    elseif (arg(0) == 'node' && is_numeric(arg(1))) {
+      switch ($op) {
+        case 'view':
+          // Pull file attachments for this issue node.
+          $result = db_query("SELECT f.filepath, pd.display_data, pd.status FROM {pift_data} pd INNER JOIN {files} f ON pd.fid = f.fid WHERE pd.nid = %d AND pd.cid = %d AND f.filepath <> '' AND pd.status <> %d ORDER BY ftid", $node->nid, 0, PIFT_UNTESTED);
+          $display = array();
 
-        // Load the files into an array to pass to the theming function.
-        while ($file = db_fetch_array($result)) {
-          $display[] = array(
-            'filepath' => $file['filepath'],
-            'status' => $file['status'],
-            'display_data' => filter_xss_admin($file['display_data']),  // Coming from a trusted server, relaxed filtering.
+          // Load the files into an array to pass to the theming function.
+          while ($file = db_fetch_array($result)) {
+            $display[] = array(
+              'filepath' => $file['filepath'],
+              'status' => $file['status'],
+              'display_data' => filter_xss_admin($file['display_data']),  // Coming from a trusted server, relaxed filtering.
+            );
+          }
+          // Display table just below file attachment.
+          $node->content['file_test_data'] = array(
+            '#value' => theme('pift_server_results', $display),
+            '#weight' => 51,  // Just below the upload attachments.
           );
-        }
-        // Display table just below file attachment.
-        $node->content['file_test_data'] = array(
-          '#value' => theme('pift_server_results', $display),
-          '#weight' => 51,  // Just below the upload attachments.
-        );
-        break;
-      case 'delete':
-        // Remove related data in the test results table.
-        db_query("DELETE FROM {pift_data} WHERE nid = %d", $node->nid);
-        break;
-      case 'update':
-        // If files were deleted, remove related data in the test results table.
-        if (is_array($node->files)) {
-          foreach ($node->files as $file) {
-            // Can be either an array or object as this point.
-            $file = (object) $file;
-            if ($file->remove) {
-              db_query("DELETE FROM {pift_data} WHERE cid = %d AND fid = %d", $comment['cid'], $file->fid);
+          break;
+        case 'delete':
+          // Remove related data in the test results table.
+          db_query("DELETE FROM {pift_data} WHERE nid = %d", $node->nid);
+          break;
+        case 'update':
+          // If files were deleted, remove related data in the test results table.
+          if (is_array($node->files)) {
+            foreach ($node->files as $file) {
+              // Can be either an array or object as this point.
+              $file = (object) $file;
+              if ($file->remove) {
+                db_query("DELETE FROM {pift_data} WHERE nid = %d AND fid = %d", $node->nid, $file->fid);
+              }
             }
           }
-        }
-        break;
+          break;
+      }
     }
   }
 }
@@ -932,6 +894,11 @@ function pift_server_comment(&$comment, $op) {
       if (!empty($cids[$comment->cid])) {
         $comment->comment .= $cids[$comment->cid];
       }
+      break;
+    case 'insert':
+      // Add attachments to this comment to the send queue.
+      $files = _comment_upload_load_files($comment['cid']);
+      pift_server_add_followup_files($files);
       break;
     case 'update':
       // If files were deleted, remove related data in the test results table.
