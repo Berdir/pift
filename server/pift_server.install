@@ -54,7 +54,10 @@ function pift_server_install() {
 
       break;
   }
-  if ($q1 && $q2 && $q3 && $q4 && $q5) {
+
+  $q7 = db_query("UPDATE {system} SET weight = 3 WHERE  name = 'pift_server'");
+
+  if ($q1 && $q2 && $q3 && $q4 && $q5 && $q6 && $q7) {
     // Set up the send queue to start with new issues/comments.
     pift_server_reset_send_queue();
     drupal_set_message(t('The Project issue file test server module was installed successfully.'));
@@ -108,4 +111,13 @@ function pift_server_update_1() {
   variable_del('pift_server_last_followup_file_processed');
 
   return array();
+}
+
+/**
+ * Weight pift_server after other project* modules.
+ */
+function pift_server_update_2() {
+  $ret = array();
+  $ret[] = update_sql("UPDATE {system} SET weight = 3 WHERE name = 'pift_server'");
+  return $ret;
 }

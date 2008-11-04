@@ -247,9 +247,9 @@ function pift_server_settings_form() {
 
   $form['advanced']['pift_test_status'] = array(
     '#type' => 'textfield',
-    '#title' => t('List of project statuses to test'),
+    '#title' => t('List of issue statuses to test'),
     '#description' => t("Test files attached to issues that have the following issue statuses (should be a comma separated list of issue sids). Leave empty to test every status."),
-    '#default_value' => variable_get('pift_test_status', ''),
+    '#default_value' => variable_get('pift_test_status', '8, 14'),
     '#validate' => array('pift_server_comma_separated_numeric_validate' => array()),
   );
 
@@ -261,6 +261,21 @@ function pift_server_settings_form() {
       '#default_value' => variable_get('pift_server_release_tag_regex', ''),
     );
   }
+
+  $criteria = array(
+    t("The file has failed testing."),
+    t("The issue the file is attached to is still passing the file testing filters for project, issue status, and release tag."),
+    t("The file is the last testable file posted to the issue."),
+  );
+  $form['advanced']['pift_server_auto_followup_sid'] = array(
+    '#type' => 'textfield',
+    '#size' => 4,
+    '#maxlength' => 4,
+    '#title' => t('Auto followup issue status ID'),
+    '#description' => t("Set this to the numeric issue status ID you wish to use for auto followups, or leave blank to disable auto followups. Auto followups are posted upon return of a file's test results, and may also be triggered if the issue metadata for project, issue status, or release tag is changed.  The auto followup will set the issue's status to the issue status ID listed here, and leave a comment linking to the file result table for the tested file, if the following criteria are met:") . theme('item_list', $criteria),
+    '#default_value' => variable_get('pift_server_auto_followup_sid', ''),
+    '#validate' => array('pift_server_is_numeric_validate' => array()),
+  );
 
   // Custom submit handler
   $form['#submit']['pift_server_settings_form_extra_submit'] = array();
@@ -722,6 +737,7 @@ function pift_server_process_files($files) {
     // and set the last tested timestamp to the current time.
     db_query("UPDATE {pift_data} SET display_data = '%s', status = %d, timestamp = %d WHERE ftid = %d", $file['display_data'], $file['status'], $time, $file['ftid']);
     $ftids[] = $file['ftid'];
+    pift_server_check_auto_followup($file);
   }
   pift_server_mail_failed_tests($ftids);
 }
@@ -782,6 +798,82 @@ function pift_server_mail_failed_tests($ftids) {
 }
 
 /**
+ * Checks a file to see if an auto status change is needed.
+ *
+ * Only files that have failed testing are eligible.  If the
+ * auto followup sid is set, and the file failed testing, and the
+ * file is the last testable file posted to the issue, then it
+ * leaves a followup setting the issue sid to the auto followup
+ * sid.
+ *
+ * @param $file
+ *   An associative array of file test result information,
+ *   with the following key/value pairs:
+ *
+ *     ftid   => The file test ID passed to the testing server.
+ *     nid    => The issue node the file is attached to.
+ *     status => The test result, should be on of the
+ *              constants PIFT_PASSED, PIFT_FAILED
+ */
+function pift_server_check_auto_followup($file) {
+
+  // Only if an auto change followup sid is set, and only for failed files.
+  if (variable_get('pift_server_auto_followup_sid', '') && $file['status'] == PIFT_FAILED) {
+    $join = '';
+    $where = '';
+    $args = array($file['nid']);
+
+    // Restrict to listed projects, if set.
+    if ($projects = pift_server_project_list()) {
+      $where .= ' AND pi.pid IN ('. implode(',', array_fill(0, count($projects), '%d')) .')';
+      $args = array_merge($args, $projects);
+    }
+
+    // Restrict to the status list, if set.
+    if ($status_list = pift_server_status_list()) {
+      $where .= ' AND pi.sid IN ('. implode(',', array_fill(0, count($status_list), '%d')) .')';
+      $args = array_merge($args, $status_list);
+    }
+
+    // Restrict to release tag, if set.
+    if (module_exists('project_release')) {
+      if ($release_tag_regex = variable_get('pift_server_release_tag_regex', '')) {
+        $join = ' LEFT JOIN {project_release_nodes} prn ON pi.rid = prn.nid';
+        $where .= " AND prn.tag REGEXP '%s'";
+        $args[] = $release_tag_regex;
+      }
+    }
+
+    // Pull last testable file for the issue.
+    $last_file = db_fetch_object(db_query_range("SELECT pd.ftid, pd.nid, pd.cid, pd.status FROM {pift_data} pd INNER JOIN {project_issues} pi ON pd.nid = pi.nid$join WHERE pd.nid = %d$where ORDER BY ftid DESC", $args, 0, 1));
+
+    // There's an attached testable file on the issue, and
+    // the file in question is the last file attached to the
+    // issue.
+    if ($last_file && $file['ftid'] == $last_file->ftid) {
+      pift_server_auto_followup($last_file);
+    }
+  }
+}
+
+/**
+ * Posts a followup to an issue.
+ *
+ * Sets the issue sid to the auto followup sid.
+ *
+ * @param $last_file
+ *   A testable file object.
+ */
+function pift_server_auto_followup($last_file) {
+
+  project_issue_add_followup(array(
+    'nid' => $last_file->nid,
+    'sid' => variable_get('pift_server_auto_followup_sid', ''),
+    'comment' => theme('pift_server_auto_close_message', $last_file),
+  ));
+}
+
+/**
  * Implementation of hook_nodeapi().
  */
 function pift_server_nodeapi(&$node, $op, $arg) {
@@ -809,7 +901,7 @@ function pift_server_nodeapi(&$node, $op, $arg) {
           }
           // Display table just below file attachment.
           $node->content['file_test_data'] = array(
-            '#value' => theme('pift_server_results', $display),
+            '#value' => theme('pift_server_results', $display, $node->nid),
             '#weight' => 51,  // Just below the upload attachments.
           );
           break;
@@ -884,7 +976,7 @@ function pift_server_comment(&$comment, $op) {
 
         // Convert the results to themed display tables.
         foreach ($cids as $cid => $display) {
-          $cids[$cid] = theme('pift_server_results', $display);
+          $cids[$cid] = theme('pift_server_results', $display, $nid, $cid);
         }
       }
 
@@ -899,6 +991,7 @@ function pift_server_comment(&$comment, $op) {
       // Add attachments to this comment to the send queue.
       $files = _comment_upload_load_files($comment['cid']);
       pift_server_add_followup_files($files);
+      pift_server_check_followup_metadata($comment);
       break;
     case 'update':
       // If files were deleted, remove related data in the test results table.
@@ -919,6 +1012,54 @@ function pift_server_comment(&$comment, $op) {
   }
 }
 
+function pift_server_check_followup_metadata($comment) {
+  $projects = pift_server_project_list();
+  $status_list = pift_server_status_list();
+  $pid = $comment['project_info']['pid'];
+  $sid = $comment['sid'];
+  $rid = $comment['project_info']['rid'];
+  $nid = $comment['nid'];
+  $release_tag_regex = variable_get('pift_server_release_tag_regex', '');
+
+  // Only proceed with checking if the current project and issue
+  // status pass the filters. There's no easy way to check the
+  // release tag filter here, so we'll check it when we pull the
+  // last testable file.
+  if ((empty($projects) || in_array($pid, $projects)) && (empty($status_list) || in_array($sid, $status_list))) {
+    // We have to check to see if either pid, sid, or rid
+    // has actually changed. There's no reliable way to do this
+    // without querying {project_issue_comments} for it.
+    $last_post = db_fetch_object(db_query_range("SELECT pid, sid, rid FROM {project_issue_comments} WHERE nid = %d AND cid <> %d ORDER BY cid DESC", $nid, $comment['cid'], 0, 1));
+    // This comment being inserted is the first followup, so get
+    // pid, sid, and rid from the issue itself.
+    if (!$last_post) {
+      $last_post = db_fetch_object(db_query("SELECT pid, sid, rid FROM {project_issues} WHERE nid = %d", $nid));
+    }
+    // A metadata change only matters if a filter is set, and
+    // we need at least one piece of metadata to have changed.
+    if ((!empty($projects) && $last_post->pid != $pid) || (!empty($status_list) && $last_post->sid != $sid) || (!empty($release_tag_regex) && $last_post->rid != $rid)) {
+      $join = '';
+      $where = '';
+      $args = array($nid);
+      // Restrict to release tag, if set.
+      if (module_exists('project_release') && $release_tag_regex) {
+        $join = ' INNER JOIN {project_issues} pi ON pd.nid = pi.nid LEFT JOIN {project_release_nodes} prn ON pi.rid = prn.nid';
+        $where .= " AND prn.tag REGEXP '%s'";
+        $args[] = $release_tag_regex;
+      }
+
+      // Pull last testable file for the issue.
+      $last_file = db_fetch_object(db_query_range("SELECT pd.nid, pd.cid, pd.status FROM {pift_data} pd$join WHERE pd.nid = %d$where ORDER BY ftid DESC", $args, 0, 1));
+
+      // There's an attached testable file on the issue, and
+      // the last testable testable file has failed testing.
+      if ($last_file && $last_file->status == PIFT_FAILED) {
+        pift_server_auto_followup($last_file);
+      }
+    }
+  }
+}
+
 /**
  * Theme test result data into a table.
  *
@@ -927,7 +1068,7 @@ function pift_server_comment(&$comment, $op) {
  * @return
  *   An HTML string of the rendered table.
  */
-function theme_pift_server_results($results) {
+function theme_pift_server_results($results, $nid, $cid = NULL) {
   $rows = array();
   $output = '';
 
@@ -968,8 +1109,32 @@ function theme_pift_server_results($results) {
         'colspan' => '3',
       )
     );
-    $output = '<div class="file-test-results">'. theme('table', $header, $rows) .'</div>';
+
+    $id = "file-test-results-$nid";
+    if (isset($cid)) {
+      $id .= "-$cid";
+    }
+
+    $output = '<div id="'. $id .'" class="file-test-results">'. theme('table', $header, $rows) .'</div>';
   }
+
+  return $output;
+}
+
+/**
+ * Themes the comment posted on auto followups.
+ *
+ * @param $last_file
+ *   A testable file object.
+ */
+function theme_pift_server_auto_close_message($last_file) {
+
+  $output = '';
+  $id = "#file-test-results-$last_file->nid";
+  if ($last_file->cid) {
+    $id .= "-$last_file->cid";
+  }
+  $output .= t('The last submitted patch <a href="@link">failed testing</a>.', array('@link' => $id));
 
   return $output;
 }
@@ -1047,7 +1212,7 @@ function pift_server_project_list() {
  *   An array of the statuses that will be examined for re-testing.
  */
 function pift_server_status_list() {
-  if ($status_list = variable_get('pift_test_status', '')) {
+  if ($status_list = variable_get('pift_test_status', '8, 14')) {
     $status_list = explode(',', $status_list);
     $status_list = array_map('trim', $status_list);
     return $status_list;
