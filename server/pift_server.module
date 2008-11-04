@@ -172,6 +172,13 @@ function pift_server_settings_form() {
     '#description' => t("If a patch fails testing, and the user who wrote the patch is subscribed to receive notifications of test failures, an e-mail will be sent. Enter the body of the e-mail message above. Available tokens for the e-mail include: <em>!username, !site, !issue_title, !issue_url, !date, !reason, !filepath</em>. Leave blank to disable e-mail notifications."),
   );
 
+  $form['pift_server_debug_file_testing_link'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Include debug file testing links'),
+    '#default_value' => variable_get('pift_server_debug_file_testing_link', ''),
+    '#description' => t('If selected, a user message will be displayed after each testable patch is submitted, containing links to manually submit a pass/fail test result for the file.'),
+  );
+
   $form['pift_server_reset_send_queue'] = array(
     '#type' => 'checkbox',
     '#title' => t('Reset sending queue'),
@@ -342,6 +349,16 @@ function pift_server_menu($may_cache) {
       'access' => $access_admin,
       'type' => MENU_NORMAL_ITEM,
     );
+    // Debug testing links.
+    if (variable_get('pift_server_debug_file_testing_link', '')) {
+      $items[] = array(
+        'path' => 'pift-server-file-testing-link',
+        'title' => t('Debug links for file test results'),
+        'callback' => 'pift_server_debug_file_testing_link',
+        'access' => TRUE,
+        'type' => MENU_CALLBACK,
+      );
+    }
   }
   else {
     // Include the CSS file.
@@ -372,11 +389,17 @@ function pift_server_reset_send_queue() {
 function pift_server_add_issue_files($files) {
   global $user;
   if (is_array($files)) {
+    $debug_links = variable_get('pift_server_debug_file_testing_link', '');
     foreach ($files as $file) {
       // Put the file data into the send queue.
       if (preg_match(PIFT_FILE_REGEX, basename($file->filepath)) && file_exists($file->filepath)) {
         $ftid = db_next_id('{pift_data}_ftid');
         db_query("INSERT INTO {pift_data} (ftid, fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, %d, '%s', %d, %d)", $ftid, $file->fid, $file->nid, 0, $user->uid, '', PIFT_UNTESTED, 0);
+        // Debugging links.
+        if ($debug_links) {
+          $file->ftid = $ftid;
+          pift_server_add_file_testing_links($file);
+        }
       }
     }
   }
@@ -391,14 +414,95 @@ function pift_server_add_issue_files($files) {
 function pift_server_add_followup_files($files) {
   global $user;
   if (is_array($files)) {
+    $debug_links = variable_get('pift_server_debug_file_testing_link', '');
     foreach ($files as $file) {
       // Put the file data into the send queue.
       if (preg_match(PIFT_FILE_REGEX, basename($file->filepath)) && file_exists($file->filepath)) {
         $ftid = db_next_id('{pift_data}_ftid');
         db_query("INSERT INTO {pift_data} (ftid, fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, %d, '%s', %d, %d)", $ftid, $file->fid, $file->nid, $file->cid, $user->uid, '', PIFT_UNTESTED, 0);
+        // Debugging links.
+        if ($debug_links) {
+          $file->ftid = $ftid;
+          pift_server_add_file_testing_links($file);
+        }
       }
     }
   }
+}
+
+/**
+ * Adds debug file testing links upon submission of testable patches.
+ *
+ * @param $file
+ *   A testable file object, with PIFT's ftid included.
+ */
+function pift_server_add_file_testing_links($file) {
+  $pass = PIFT_PASSED;
+  $fail = PIFT_FAILED;
+  $query = "destination=node/$file->nid";
+  if (isset($file->cid)) {
+    $cid = $file->cid;
+    $query .= "#comment-$cid";
+  }
+  else {
+    $cid = 0;
+  }
+
+  $for_file = t(' for file %file', array('%file' => basename($file->filepath)));
+
+  $links = '';
+  $links .= '<div>';
+  $links .= l(t("Manually pass testing"), "pift-server-file-testing-link/$file->ftid/$file->nid/$cid/$pass", array(), $query) . $for_file;
+  $links .= '</div><div>';
+  $links .= l(t("Manually fail testing"), "pift-server-file-testing-link/$file->ftid/$file->nid/$cid/$fail", array(), $query) . $for_file;
+  $links .= '</div>';
+
+  drupal_set_message($links);
+}
+
+/**
+ * Callback for manually submitting patch test results.
+ *
+ * Useful for debugging.
+ *
+ * @param $ftid
+ *   PIFT's file testing ID
+ * @param $nid
+ *   The issue node ID.
+ * @param $cid
+ *   Followup comment ID, or zero for an initial issue post.
+ * @param $status
+ *   Status to set the test result to.  Should be one of
+ *   PIFT_PASSED, PIFT_FAILED
+ */
+function pift_server_debug_file_testing_link($ftid, $nid, $cid, $status) {
+  // Make sure we have all numeric args.
+  $args = func_get_args();
+  foreach ($args as $arg) {
+    if (!is_numeric($arg)) {
+      drupal_set_message(t('non-numeric argument passed'), 'error');
+      drupal_goto();
+    }
+  }
+  switch ((int) $status) {
+    case PIFT_PASSED:
+      $display_data = t('file passed testing');
+      break;
+    case PIFT_FAILED:
+      $display_data = t('file failed testing');
+      break;
+    default:
+      $display_data = '';
+      break;
+  }
+  $file = array(
+    'ftid' => $ftid,
+    'nid' => $nid,
+    'status' => $status,
+    'display_data' => $display_data,
+  );
+  pift_server_process_files(array($file));
+  drupal_goto();
 }
 
 /**
