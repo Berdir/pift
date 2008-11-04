@@ -398,7 +398,8 @@ function pift_server_add_issue_files($files) {
         // Debugging links.
         if ($debug_links) {
           $file->ftid = $ftid;
-          pift_server_add_file_testing_links($file);
+          $debug_testing_links = pift_server_build_file_testing_links($file);
+          drupal_set_message($debug_testing_links);
         }
       }
     }
@@ -423,7 +424,8 @@ function pift_server_add_followup_files($files) {
         // Debugging links.
         if ($debug_links) {
           $file->ftid = $ftid;
-          pift_server_add_file_testing_links($file);
+          $debug_testing_links = pift_server_build_file_testing_links($file);
+          drupal_set_message($debug_testing_links);
         }
       }
     }
@@ -436,7 +438,7 @@ function pift_server_add_followup_files($files) {
  * @param $file
  *   A testable file object, with PIFT's ftid included.
  */
-function pift_server_add_file_testing_links($file) {
+function pift_server_build_file_testing_links($file) {
   $pass = PIFT_PASSED;
   $fail = PIFT_FAILED;
   $query = "destination=node/$file->nid";
@@ -457,7 +459,7 @@ function pift_server_add_file_testing_links($file) {
   $links .= l(t("Manually fail testing"), "pift-server-file-testing-link/$file->ftid/$file->nid/$cid/$fail", array(), $query) . $for_file;
   $links .= '</div>';
 
-  drupal_set_message($links);
+  return $links;
 }
 
 /**
@@ -992,22 +994,35 @@ function pift_server_nodeapi(&$node, $op, $arg) {
       switch ($op) {
         case 'view':
           // Pull file attachments for this issue node.
-          $result = db_query("SELECT f.filepath, pd.display_data, pd.status FROM {pift_data} pd INNER JOIN {files} f ON pd.fid = f.fid WHERE pd.nid = %d AND pd.cid = %d AND f.filepath <> '' AND pd.status <> %d ORDER BY ftid", $node->nid, 0, PIFT_UNTESTED);
+          $result = db_query("SELECT f.filepath, pd.ftid, pd.nid, pd.display_data, pd.status FROM {pift_data} pd INNER JOIN {files} f ON pd.fid = f.fid WHERE pd.nid = %d AND pd.cid = %d AND f.filepath <> '' AND pd.status <> %d ORDER BY ftid", $node->nid, 0, PIFT_UNTESTED);
           $display = array();
 
           // Load the files into an array to pass to the theming function.
+          $debug_test_links = array();
+          $debug_links = variable_get('pift_server_debug_file_testing_link', '');
           while ($file = db_fetch_array($result)) {
             $display[] = array(
               'filepath' => $file['filepath'],
               'status' => $file['status'],
               'display_data' => filter_xss_admin($file['display_data']),  // Coming from a trusted server, relaxed filtering.
             );
+            if ($debug_links) {
+              $file_object = (object) $file;
+              $debug_test_links[] = pift_server_build_file_testing_links($file_object);
+            }
           }
           // Display table just below file attachment.
           $node->content['file_test_data'] = array(
             '#value' => theme('pift_server_results', $display, $node->nid),
             '#weight' => 51,  // Just below the upload attachments.
           );
+          // Debug display.
+          if (!empty($debug_test_links)) {
+            $node->content['file_test_debug_links'] = array(
+              '#value' => theme('item_list', $debug_test_links),
+              '#weight' => 52,  // Just below the upload attachments.
+            );
+          }
           break;
         case 'delete':
           // Remove related data in the test results table.
@@ -1066,21 +1081,26 @@ function pift_server_comment(&$comment, $op) {
       if (!isset($cids)) {
         $cids = array();
         // Pull file attachments for all followups on the issue.
-        $result = db_query("SELECT cu.cid, cu.filepath, cu.description, pd.display_data, pd.status FROM {pift_data} pd INNER JOIN {comment_upload_files} cu ON pd.fid = cu.fid WHERE pd.nid = %d AND pd.cid <> %d AND status <> %d ORDER BY ftid", $node->nid, 0, PIFT_UNTESTED);
+        $result = db_query("SELECT cu.cid, cu.filepath, cu.description, pd.ftid, pd.nid, pd.cid, pd.display_data, pd.status FROM {pift_data} pd INNER JOIN {comment_upload_files} cu ON pd.fid = cu.fid WHERE pd.nid = %d AND pd.cid <> %d AND status <> %d ORDER BY ftid", $node->nid, 0, PIFT_UNTESTED);
 
         // Load the files into an array to pass to the theming function.
+        $debug_links = variable_get('pift_server_debug_file_testing_link', '');
         while ($file = db_fetch_array($result)) {
-          $cids[$file['cid']][] = array(
+          $cids[$file['cid']]['results'][] = array(
             'filepath' => $file['filepath'],
             'description' => $file['description'],
             'status' => $file['status'],
             'display_data' => filter_xss_admin($file['display_data']),
           );
+          if ($debug_links) {
+            $file_object = (object) $file;
+            $cids[$file['cid']]['debug'][] = pift_server_build_file_testing_links($file_object);
+          }
         }
 
         // Convert the results to themed display tables.
         foreach ($cids as $cid => $display) {
-          $cids[$cid] = theme('pift_server_results', $display, $nid, $cid);
+          $cids[$cid]['results'] = theme('pift_server_results', $display['results'], $nid, $cid);
         }
       }
 
@@ -1088,7 +1108,10 @@ function pift_server_comment(&$comment, $op) {
       // TODO: When comment module's rendering isn't so whack,
       // always put this right after the attachment table.
       if (!empty($cids[$comment->cid])) {
-        $comment->comment .= $cids[$comment->cid];
+        $comment->comment .= $cids[$comment->cid]['results'];
+        if (isset($cids[$comment->cid]['debug'])) {
+          $comment->comment .= theme('item_list', $cids[$comment->cid]['debug']);
+        }
       }
       break;
     case 'insert':
