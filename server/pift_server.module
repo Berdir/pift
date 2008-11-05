@@ -389,18 +389,11 @@ function pift_server_reset_send_queue() {
 function pift_server_add_issue_files($files) {
   global $user;
   if (is_array($files)) {
-    $debug_links = variable_get('pift_server_debug_file_testing_link', '');
     foreach ($files as $file) {
       // Put the file data into the send queue.
       if (preg_match(PIFT_FILE_REGEX, basename($file->filepath)) && file_exists($file->filepath)) {
         $ftid = db_next_id('{pift_data}_ftid');
         db_query("INSERT INTO {pift_data} (ftid, fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, %d, '%s', %d, %d)", $ftid, $file->fid, $file->nid, 0, $user->uid, '', PIFT_UNTESTED, 0);
-        // Debugging links.
-        if ($debug_links) {
-          $file->ftid = $ftid;
-          $debug_testing_links = pift_server_build_file_testing_links($file);
-          drupal_set_message($debug_testing_links);
-        }
       }
     }
   }
@@ -415,18 +408,11 @@ function pift_server_add_issue_files($files) {
 function pift_server_add_followup_files($files) {
   global $user;
   if (is_array($files)) {
-    $debug_links = variable_get('pift_server_debug_file_testing_link', '');
     foreach ($files as $file) {
       // Put the file data into the send queue.
       if (preg_match(PIFT_FILE_REGEX, basename($file->filepath)) && file_exists($file->filepath)) {
         $ftid = db_next_id('{pift_data}_ftid');
         db_query("INSERT INTO {pift_data} (ftid, fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, %d, '%s', %d, %d)", $ftid, $file->fid, $file->nid, $file->cid, $user->uid, '', PIFT_UNTESTED, 0);
-        // Debugging links.
-        if ($debug_links) {
-          $file->ftid = $ftid;
-          $debug_testing_links = pift_server_build_file_testing_links($file);
-          drupal_set_message($debug_testing_links);
-        }
       }
     }
   }
@@ -998,18 +984,12 @@ function pift_server_nodeapi(&$node, $op, $arg) {
           $display = array();
 
           // Load the files into an array to pass to the theming function.
-          $debug_test_links = array();
-          $debug_links = variable_get('pift_server_debug_file_testing_link', '');
           while ($file = db_fetch_array($result)) {
             $display[] = array(
               'filepath' => $file['filepath'],
               'status' => $file['status'],
               'display_data' => filter_xss_admin($file['display_data']),  // Coming from a trusted server, relaxed filtering.
             );
-            if ($debug_links) {
-              $file_object = (object) $file;
-              $debug_test_links[] = pift_server_build_file_testing_links($file_object);
-            }
           }
           // Display table just below file attachment.
           $node->content['file_test_data'] = array(
@@ -1017,6 +997,17 @@ function pift_server_nodeapi(&$node, $op, $arg) {
             '#weight' => 51,  // Just below the upload attachments.
           );
           // Debug display.
+          $debug_links = variable_get('pift_server_debug_file_testing_link', '');
+          if ($debug_links) {
+            $files = upload_load($node);
+            $debug_test_links = array();
+            foreach ($files as $file) {
+              if (preg_match(PIFT_FILE_REGEX, basename($file->filepath)) && file_exists($file->filepath) && ($ftid = db_result(db_query("SELECT ftid FROM {pift_data} WHERE nid = %d AND cid = 0 AND fid = %d", $file->nid, $file->fid)))) {
+                $file->ftid = $ftid;
+                $debug_test_links[] = pift_server_build_file_testing_links($file);
+              }
+            }
+          }
           if (!empty($debug_test_links)) {
             $node->content['file_test_debug_links'] = array(
               '#value' => theme('item_list', $debug_test_links),
@@ -1084,23 +1075,18 @@ function pift_server_comment(&$comment, $op) {
         $result = db_query("SELECT cu.cid, cu.filepath, cu.description, pd.ftid, pd.nid, pd.cid, pd.display_data, pd.status FROM {pift_data} pd INNER JOIN {comment_upload_files} cu ON pd.fid = cu.fid WHERE pd.nid = %d AND pd.cid <> %d AND status <> %d ORDER BY ftid", $node->nid, 0, PIFT_UNTESTED);
 
         // Load the files into an array to pass to the theming function.
-        $debug_links = variable_get('pift_server_debug_file_testing_link', '');
         while ($file = db_fetch_array($result)) {
-          $cids[$file['cid']]['results'][] = array(
+          $cids[$file['cid']][] = array(
             'filepath' => $file['filepath'],
             'description' => $file['description'],
             'status' => $file['status'],
             'display_data' => filter_xss_admin($file['display_data']),
           );
-          if ($debug_links) {
-            $file_object = (object) $file;
-            $cids[$file['cid']]['debug'][] = pift_server_build_file_testing_links($file_object);
-          }
         }
 
         // Convert the results to themed display tables.
         foreach ($cids as $cid => $display) {
-          $cids[$cid]['results'] = theme('pift_server_results', $display['results'], $nid, $cid);
+          $cids[$cid] = theme('pift_server_results', $display, $nid, $cid);
         }
       }
 
@@ -1108,9 +1094,23 @@ function pift_server_comment(&$comment, $op) {
       // TODO: When comment module's rendering isn't so whack,
       // always put this right after the attachment table.
       if (!empty($cids[$comment->cid])) {
-        $comment->comment .= $cids[$comment->cid]['results'];
-        if (isset($cids[$comment->cid]['debug'])) {
-          $comment->comment .= theme('item_list', $cids[$comment->cid]['debug']);
+        $comment->comment .= $cids[$comment->cid];
+      }
+      // Debug display.
+      $debug_links = variable_get('pift_server_debug_file_testing_link', '');
+      if ($debug_links) {
+        $files = _comment_upload_load_files($comment->cid);
+        if (is_array($files)) {
+          $debug_test_links = array();
+          foreach ($files as $file) {
+            if (preg_match(PIFT_FILE_REGEX, basename($file->filepath)) && file_exists($file->filepath) && ($ftid = db_result(db_query("SELECT ftid FROM {pift_data} WHERE nid = %d AND cid = %d AND fid = %d", $file->nid, $file->cid, $file->fid)))) {
+              $file->ftid = $ftid;
+              $debug_test_links[] = pift_server_build_file_testing_links($file);
+            }
+          }
+        }
+        if (!empty($debug_test_links)) {
+          $comment->comment .= theme('item_list', $debug_test_links);
         }
       }
       break;
