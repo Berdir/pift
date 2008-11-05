@@ -825,11 +825,17 @@ function pift_server_process_files($files) {
   $ftids = array();
   $time = time();
   foreach ($files as $file) {
-    // Update the entry that was originally entered for this file,
-    // and set the last tested timestamp to the current time.
-    db_query("UPDATE {pift_data} SET display_data = '%s', status = %d, timestamp = %d WHERE ftid = %d", $file['display_data'], $file['status'], $time, $file['ftid']);
-    $ftids[] = $file['ftid'];
-    pift_server_check_auto_followup($file);
+    if (pift_server_check_issue_filters($file['nid'])) {
+      // Update the entry that was originally entered for this file,
+      // and set the last tested timestamp to the current time.
+      db_query("UPDATE {pift_data} SET display_data = '%s', status = %d, timestamp = %d WHERE ftid = %d", $file['display_data'], $file['status'], $time, $file['ftid']);
+      $ftids[] = $file['ftid'];
+      pift_server_check_auto_followup($file);
+    }
+    else {
+      // File test result didn't pass filters, but still update the testing timestamp.
+      db_query("UPDATE {pift_data} SET timestamp = %d WHERE ftid = %d", $time, $file['ftid']);
+    }
   }
   pift_server_mail_failed_tests($ftids);
 }
@@ -887,6 +893,45 @@ function pift_server_mail_failed_tests($ftids) {
       }
     }
   }
+}
+
+/**
+ * Checks an issue to see if it still passes testable file filters.
+ *
+ * @param $nid
+ *   The issue node the file is attached to.
+ */
+function pift_server_check_issue_filters($nid) {
+
+  $join = '';
+  $where = '';
+  $args = array($nid);
+
+  // Restrict to listed projects, if set.
+  if ($projects = pift_server_project_list()) {
+    $where .= ' AND pi.pid IN ('. implode(',', array_fill(0, count($projects), '%d')) .')';
+    $args = array_merge($args, $projects);
+  }
+
+  // Restrict to the status list, if set.
+  if ($status_list = pift_server_status_list()) {
+    $where .= ' AND pi.sid IN ('. implode(',', array_fill(0, count($status_list), '%d')) .')';
+    $args = array_merge($args, $status_list);
+  }
+
+  // Restrict to release tag, if set.
+  if (module_exists('project_release')) {
+    if ($release_tag_regex = variable_get('pift_server_release_tag_regex', '')) {
+      $join = ' LEFT JOIN {project_release_nodes} prn ON pi.rid = prn.nid';
+      $where .= " AND prn.tag REGEXP '%s'";
+      $args[] = $release_tag_regex;
+    }
+  }
+
+  // Pull last testable file for the issue.
+  $passed_filters = db_result(db_query("SELECT pi.nid FROM {project_issues} pi$join WHERE pi.nid = %d$where", $args));
+
+  return $passed_filters;
 }
 
 /**
