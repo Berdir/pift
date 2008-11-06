@@ -829,8 +829,12 @@ function pift_server_process_files($files) {
       // Update the entry that was originally entered for this file,
       // and set the last tested timestamp to the current time.
       db_query("UPDATE {pift_data} SET display_data = '%s', status = %d, timestamp = %d WHERE ftid = %d", $file['display_data'], $file['status'], $time, $file['ftid']);
-      $ftids[] = $file['ftid'];
-      pift_server_check_auto_followup($file);
+      // In case the file was removed from the testable files list
+      // from the time it was submitted.
+      if (db_affected_rows()) {
+        $ftids[] = $file['ftid'];
+        pift_server_check_auto_followup($file);
+      }
     }
     else {
       // File test result didn't pass filters, but still update the testing timestamp.
