@@ -485,7 +485,7 @@ function pift_server_debug_file_testing_link($ftid, $nid, $cid, $status) {
   }
   $file = array(
     'ftid' => $ftid,
-    'nid' => $nid,
+    'issue_id' => $nid,
     'status' => $status,
     'display_data' => $display_data,
   );
@@ -825,7 +825,7 @@ function pift_server_process_files($files) {
   $ftids = array();
   $time = time();
   foreach ($files as $file) {
-    if (pift_server_check_issue_filters($file['nid'])) {
+    if (pift_server_check_issue_filters($file['issue_id'])) {
       // Update the entry that was originally entered for this file,
       // and set the last tested timestamp to the current time.
       db_query("UPDATE {pift_data} SET display_data = '%s', status = %d, timestamp = %d WHERE ftid = %d", $file['display_data'], $file['status'], $time, $file['ftid']);
@@ -947,10 +947,10 @@ function pift_server_check_issue_filters($nid) {
  *   An associative array of file test result information,
  *   with the following key/value pairs:
  *
- *     ftid   => The file test ID passed to the testing server.
- *     nid    => The issue node the file is attached to.
- *     status => The test result, should be on of the
- *              constants PIFT_PASSED, PIFT_FAILED
+ *     ftid     => The file test ID passed to the testing server.
+ *     issue_id => The issue node the file is attached to.
+ *     status   => The test result, should be on of the
+ *                 constants PIFT_PASSED, PIFT_FAILED
  */
 function pift_server_check_auto_followup($file) {
 
@@ -958,7 +958,7 @@ function pift_server_check_auto_followup($file) {
   if (variable_get('pift_server_auto_followup_sid', '') && $file['status'] == PIFT_FAILED) {
     $join = '';
     $where = '';
-    $args = array($file['nid']);
+    $args = array($file['issue_id']);
 
     // Restrict to listed projects, if set.
     if ($projects = pift_server_project_list()) {
@@ -1237,6 +1237,10 @@ function pift_server_check_followup_metadata($comment) {
  *
  * @param $results
  *   An array of test result data.
+ * @param $nid
+ *   The issue node ID.
+ * @param $cid
+ *   The comment ID (optional).
  * @return
  *   An HTML string of the rendered table.
  */
