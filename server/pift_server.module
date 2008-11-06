@@ -391,7 +391,7 @@ function pift_server_add_issue_files($files) {
   if (is_array($files)) {
     foreach ($files as $file) {
       // Put the file data into the send queue.
-      if (preg_match(PIFT_FILE_REGEX, basename($file->filepath)) && file_exists($file->filepath)) {
+      if (preg_match(PIFT_FILE_REGEX, $file->filename) && file_exists($file->filepath)) {
         $ftid = db_next_id('{pift_data}_ftid');
         db_query("INSERT INTO {pift_data} (ftid, fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, %d, '%s', %d, %d)", $ftid, $file->fid, $file->nid, 0, $user->uid, '', PIFT_UNTESTED, 0);
       }
@@ -410,7 +410,7 @@ function pift_server_add_followup_files($files) {
   if (is_array($files)) {
     foreach ($files as $file) {
       // Put the file data into the send queue.
-      if (preg_match(PIFT_FILE_REGEX, basename($file->filepath)) && file_exists($file->filepath)) {
+      if (preg_match(PIFT_FILE_REGEX, $file->filename) && file_exists($file->filepath)) {
         $ftid = db_next_id('{pift_data}_ftid');
         db_query("INSERT INTO {pift_data} (ftid, fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, %d, '%s', %d, %d)", $ftid, $file->fid, $file->nid, $file->cid, $user->uid, '', PIFT_UNTESTED, 0);
       }
@@ -436,7 +436,7 @@ function pift_server_build_file_testing_links($file) {
     $cid = 0;
   }
 
-  $for_file = t(' for file %file', array('%file' => basename($file->filepath)));
+  $for_file = t(' for file %file', array('%file' => $file->filename));
 
   $links = '';
   $links .= '<div>';
@@ -1025,13 +1025,13 @@ function pift_server_nodeapi(&$node, $op, $arg) {
       switch ($op) {
         case 'view':
           // Pull file attachments for this issue node.
-          $result = db_query("SELECT f.filepath, pd.ftid, pd.nid, pd.display_data, pd.status FROM {pift_data} pd INNER JOIN {files} f ON pd.fid = f.fid WHERE pd.nid = %d AND pd.cid = %d AND f.filepath <> '' AND pd.status <> %d ORDER BY ftid", $node->nid, 0, PIFT_UNTESTED);
+          $result = db_query("SELECT f.filename, pd.ftid, pd.nid, pd.display_data, pd.status FROM {pift_data} pd INNER JOIN {files} f ON pd.fid = f.fid WHERE pd.nid = %d AND pd.cid = %d AND f.filepath <> '' AND pd.status <> %d ORDER BY ftid", $node->nid, 0, PIFT_UNTESTED);
           $display = array();
 
           // Load the files into an array to pass to the theming function.
           while ($file = db_fetch_array($result)) {
             $display[] = array(
-              'filepath' => $file['filepath'],
+              'filename' => $file['filename'],
               'status' => $file['status'],
               'display_data' => filter_xss_admin($file['display_data']),  // Coming from a trusted server, relaxed filtering.
             );
@@ -1047,7 +1047,7 @@ function pift_server_nodeapi(&$node, $op, $arg) {
             $files = upload_load($node);
             $debug_test_links = array();
             foreach ($files as $file) {
-              if (preg_match(PIFT_FILE_REGEX, basename($file->filepath)) && file_exists($file->filepath) && ($ftid = db_result(db_query("SELECT ftid FROM {pift_data} WHERE nid = %d AND cid = 0 AND fid = %d", $file->nid, $file->fid)))) {
+              if (preg_match(PIFT_FILE_REGEX, $file->filename) && file_exists($file->filepath) && ($ftid = db_result(db_query("SELECT ftid FROM {pift_data} WHERE nid = %d AND cid = 0 AND fid = %d", $file->nid, $file->fid)))) {
                 $file->ftid = $ftid;
                 $debug_test_links[] = pift_server_build_file_testing_links($file);
               }
@@ -1117,12 +1117,12 @@ function pift_server_comment(&$comment, $op) {
       if (!isset($cids)) {
         $cids = array();
         // Pull file attachments for all followups on the issue.
-        $result = db_query("SELECT cu.cid, cu.filepath, cu.description, pd.ftid, pd.nid, pd.cid, pd.display_data, pd.status FROM {pift_data} pd INNER JOIN {comment_upload_files} cu ON pd.fid = cu.fid WHERE pd.nid = %d AND pd.cid <> %d AND status <> %d ORDER BY ftid", $node->nid, 0, PIFT_UNTESTED);
+        $result = db_query("SELECT cu.cid, cu.filename, cu.description, pd.ftid, pd.nid, pd.cid, pd.display_data, pd.status FROM {pift_data} pd INNER JOIN {comment_upload_files} cu ON pd.fid = cu.fid WHERE pd.nid = %d AND pd.cid <> %d AND status <> %d ORDER BY ftid", $node->nid, 0, PIFT_UNTESTED);
 
         // Load the files into an array to pass to the theming function.
         while ($file = db_fetch_array($result)) {
           $cids[$file['cid']][] = array(
-            'filepath' => $file['filepath'],
+            'filename' => $file['filename'],
             'description' => $file['description'],
             'status' => $file['status'],
             'display_data' => filter_xss_admin($file['display_data']),
@@ -1148,7 +1148,7 @@ function pift_server_comment(&$comment, $op) {
         if (is_array($files)) {
           $debug_test_links = array();
           foreach ($files as $file) {
-            if (preg_match(PIFT_FILE_REGEX, basename($file->filepath)) && file_exists($file->filepath) && ($ftid = db_result(db_query("SELECT ftid FROM {pift_data} WHERE nid = %d AND cid = %d AND fid = %d", $file->nid, $file->cid, $file->fid)))) {
+            if (preg_match(PIFT_FILE_REGEX, $file->filename) && file_exists($file->filepath) && ($ftid = db_result(db_query("SELECT ftid FROM {pift_data} WHERE nid = %d AND cid = %d AND fid = %d", $file->nid, $file->cid, $file->fid)))) {
               $file->ftid = $ftid;
               $debug_test_links[] = pift_server_build_file_testing_links($file);
             }
@@ -1246,7 +1246,7 @@ function theme_pift_server_results($results, $nid, $cid = NULL) {
 
   // One row for each file test result.
   foreach ($results as $result) {
-    $description = $result['description'] ? $result['description'] : basename($result['filepath']);
+    $description = $result['description'] ? $result['description'] : basename($result['filename']);
     switch ($result['status']) {
       // File passed testing.
       case PIFT_PASSED:

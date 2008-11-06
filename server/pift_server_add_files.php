@@ -39,12 +39,12 @@ function pift_server_add_files_update_1() {
   $ret = array();
 
   // Pull all new issue data. Limit the results to 5 times the PIFT_SEND_LIMIT for consistency.
-  $issue_files = db_query_range("SELECT n.nid, n.uid, f.fid, f.filepath FROM {node} n INNER JOIN {files} f ON n.nid = f.nid WHERE n.type = 'project_issue' AND f.fid >= %d AND f.fid <= %d AND f.filepath <> '' ORDER BY n.nid, f.fid", $_SESSION['first_issue_fid'], $_SESSION['last_issue_fid'], $_SESSION['pift_server_add_files_update_1'], $limit);
+  $issue_files = db_query_range("SELECT n.nid, n.uid, f.fid, f.filename, f.filepath FROM {node} n INNER JOIN {files} f ON n.nid = f.nid WHERE n.type = 'project_issue' AND f.fid >= %d AND f.fid <= %d AND f.filepath <> '' ORDER BY n.nid, f.fid", $_SESSION['first_issue_fid'], $_SESSION['last_issue_fid'], $_SESSION['pift_server_add_files_update_1'], $limit);
 
   while ($file = db_fetch_object($issue_files)) {
 
     // Put the file data into the send queue.
-    if (preg_match($_SESSION['file_regex'], basename($file->filepath)) && file_exists($file->filepath)) {
+    if (preg_match($_SESSION['file_regex'], $file->filename) && file_exists($file->filepath)) {
       $ftid = db_next_id('{pift_data}_ftid');
       $ret[] = update_sql("INSERT INTO {pift_data} (ftid, fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, %d, '%s', %d, %d)", $ftid, $file->fid, $file->nid, 0, $file->uid, '', PIFT_UNTESTED, 0);
     }
@@ -82,12 +82,12 @@ function pift_server_add_files_update_2() {
   $ret = array();
 
   // Pull all new followup file data. Limit the results to 5 times the PIFT_SEND_LIMIT for consistency.
-  $followup_files = db_query_range("SELECT n.nid, c.cid, c.uid, cu.fid, cu.filepath FROM {node} n INNER JOIN {comments} c ON n.nid = c.nid INNER JOIN {comment_upload_files} cu ON c.cid = cu.cid WHERE n.type = 'project_issue' AND cu.fid >= %d AND cu.fid <= %d AND cu.filepath <> '' ORDER BY c.cid, cu.fid", $_SESSION['first_followup_fid'], $_SESSION['last_followup_fid'], $_SESSION['pift_server_add_files_update_2'], $limit);
+  $followup_files = db_query_range("SELECT n.nid, c.cid, c.uid, cu.fid, cu.filename, cu.filepath FROM {node} n INNER JOIN {comments} c ON n.nid = c.nid INNER JOIN {comment_upload_files} cu ON c.cid = cu.cid WHERE n.type = 'project_issue' AND cu.fid >= %d AND cu.fid <= %d AND cu.filepath <> '' ORDER BY c.cid, cu.fid", $_SESSION['first_followup_fid'], $_SESSION['last_followup_fid'], $_SESSION['pift_server_add_files_update_2'], $limit);
 
   while ($file = db_fetch_object($followup_files)) {
 
     // Put the file data into the send queue.
-    if (preg_match($_SESSION['file_regex'], basename($file->filepath)) && file_exists($file->filepath)) {
+    if (preg_match($_SESSION['file_regex'], $file->filename) && file_exists($file->filepath)) {
       $ftid = db_next_id('{pift_data}_ftid');
       $ret[] = update_sql("INSERT INTO {pift_data} (ftid, fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, %d, '%s', %d, %d)", $ftid, $file->fid, $file->nid, $file->cid, $file->uid, '', PIFT_UNTESTED, 0);
     }
