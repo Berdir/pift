@@ -874,6 +874,8 @@ function pift_server_process_test_results($server, $files) {
  *     'ftid'         => The file test ID that was originally passed to
  *                       the test server for the file in question.
  *
+ *     'issue_id'     => The node ID for the issue the patch is attached to.
+ *
  *     'status'       => The file's test status (passed, failed, etc.).
  *
  *     'display_data' => Optional. A string of addition data to display
