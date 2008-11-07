@@ -357,15 +357,14 @@ function pift_server_menu($may_cache) {
       'type' => MENU_NORMAL_ITEM,
     );
     // Debug testing links.
-    if (variable_get('pift_server_debug_file_testing_link', '')) {
-      $items[] = array(
-        'path' => 'pift-server-file-testing-link',
-        'title' => t('Debug links for file test results'),
-        'callback' => 'pift_server_debug_file_testing_link',
-        'access' => TRUE,
-        'type' => MENU_CALLBACK,
-      );
-    }
+    $items[] = array(
+      'path' => 'pift-server-file-testing-link',
+      'title' => t('Debug links for file test results'),
+      'callback' => 'pift_server_debug_file_testing_link',
+      'access' => TRUE,
+      'type' => MENU_CALLBACK,
+    );
+    // Manual request for re-test.
     $items[] = array(
       'path' => 'pift-server-request-retest',
       'title' => t('Request to re-test a file'),
@@ -478,33 +477,39 @@ function pift_server_build_file_testing_links($file) {
  *   PIFT_PASSED, PIFT_FAILED
  */
 function pift_server_debug_file_testing_link($ftid, $nid, $cid, $status) {
-  // Make sure we have all numeric args.
-  $args = func_get_args();
-  foreach ($args as $arg) {
-    if (!is_numeric($arg)) {
-      drupal_set_message(t('non-numeric argument passed'), 'error');
-      drupal_goto();
+  if (variable_get('pift_server_debug_file_testing_link', '')) {
+    // Make sure we have all numeric args.
+    $args = func_get_args();
+    foreach ($args as $arg) {
+      if (!is_numeric($arg)) {
+        drupal_set_message(t('non-numeric argument passed'), 'error');
+        drupal_goto();
+      }
     }
+    switch ((int) $status) {
+      case PIFT_PASSED:
+        $display_data = t('file passed testing');
+        break;
+      case PIFT_FAILED:
+        $display_data = t('file failed testing');
+        break;
+      default:
+        $display_data = '';
+        break;
+    }
+    $file = array(
+      'ftid' => $ftid,
+      'issue_id' => $nid,
+      'status' => $status,
+      'display_data' => $display_data,
+    );
+    pift_server_process_files(array($file));
+    drupal_goto();
   }
-  switch ((int) $status) {
-    case PIFT_PASSED:
-      $display_data = t('file passed testing');
-      break;
-    case PIFT_FAILED:
-      $display_data = t('file failed testing');
-      break;
-    default:
-      $display_data = '';
-      break;
+  else {
+    drupal_access_denied();
   }
-  $file = array(
-    'ftid' => $ftid,
-    'issue_id' => $nid,
-    'status' => $status,
-    'display_data' => $display_data,
-  );
-  pift_server_process_files(array($file));
-  drupal_goto();
+
 }
 
 /**
