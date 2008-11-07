@@ -1259,6 +1259,14 @@ function pift_server_comment(&$comment, $op) {
 }
 
 function pift_server_check_followup_metadata($comment) {
+
+  $auto_followup_sid = variable_get('pift_server_auto_followup_sid', '');
+
+  // If no auto followup sid exists, then this check isn't necessary.
+  if (!$auto_followup_sid) {
+    return;
+  }
+
   $projects = pift_server_project_list();
   $status_list = pift_server_status_list();
   $pid = $comment['project_info']['pid'];
@@ -1283,7 +1291,12 @@ function pift_server_check_followup_metadata($comment) {
     }
     // A metadata change only matters if a filter is set, and
     // we need at least one piece of metadata to have changed.
-    if ((!empty($projects) && $last_post->pid != $pid) || (!empty($status_list) && $last_post->sid != $sid) || (!empty($release_tag_regex) && $last_post->rid != $rid)) {
+    $metadata_change = (!empty($projects) && $last_post->pid != $pid) || (!empty($status_list) && $last_post->sid != $sid) || (!empty($release_tag_regex) && $last_post->rid != $rid);
+    // Continue if there was a metadata change, except
+    // in the special case where a user is trying to manually
+    // set the issue state from the auto followup state to a testable
+    // state, we want to allow this.
+    if ($metadata_change && $last_post->sid != $auto_followup_sid) {
       $join = '';
       $where = '';
       $args = array($nid);
@@ -1298,7 +1311,7 @@ function pift_server_check_followup_metadata($comment) {
       $last_file = db_fetch_object(db_query_range("SELECT pd.nid, pd.cid, pd.status FROM {pift_data} pd$join WHERE pd.nid = %d$where ORDER BY ftid DESC", $args, 0, 1));
 
       // There's an attached testable file on the issue, and
-      // the last testable testable file has failed testing.
+      // the last testable file has failed testing.
       if ($last_file && $last_file->status == PIFT_FAILED) {
         pift_server_auto_followup($last_file);
       }
