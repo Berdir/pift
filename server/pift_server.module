@@ -442,20 +442,16 @@ function pift_server_build_file_testing_links($file) {
   $fail = PIFT_FAILED;
   $query = "destination=node/$file->nid";
   if (isset($file->cid)) {
-    $cid = $file->cid;
-    $query .= "#comment-$cid";
-  }
-  else {
-    $cid = 0;
+    $query .= "#comment-$file->cid";
   }
 
   $for_file = t(' for file %file', array('%file' => $file->filename));
 
   $links = '';
   $links .= '<div>';
-  $links .= l(t("Manually pass testing"), "pift-server-file-testing-link/$file->ftid/$file->nid/$cid/$pass", array(), $query) . $for_file;
+  $links .= l(t("Manually pass testing"), "pift-server-file-testing-link/$file->ftid/$pass", array(), $query) . $for_file;
   $links .= '</div><div>';
-  $links .= l(t("Manually fail testing"), "pift-server-file-testing-link/$file->ftid/$file->nid/$cid/$fail", array(), $query) . $for_file;
+  $links .= l(t("Manually fail testing"), "pift-server-file-testing-link/$file->ftid/$fail", array(), $query) . $for_file;
   $links .= '</div>';
 
   return $links;
@@ -476,7 +472,7 @@ function pift_server_build_file_testing_links($file) {
  *   Status to set the test result to.  Should be one of
  *   PIFT_PASSED, PIFT_FAILED
  */
-function pift_server_debug_file_testing_link($ftid, $nid, $cid, $status) {
+function pift_server_debug_file_testing_link($ftid, $status) {
   if (variable_get('pift_server_debug_file_testing_link', '')) {
     // Make sure we have all numeric args.
     $args = func_get_args();
@@ -499,7 +495,6 @@ function pift_server_debug_file_testing_link($ftid, $nid, $cid, $status) {
     }
     $file = array(
       'ftid' => $ftid,
-      'issue_id' => $nid,
       'status' => $status,
       'display_data' => $display_data,
     );
@@ -874,8 +869,6 @@ function pift_server_process_test_results($server, $files) {
  *     'ftid'         => The file test ID that was originally passed to
  *                       the test server for the file in question.
  *
- *     'issue_id'     => The node ID for the issue the patch is attached to.
- *
  *     'status'       => The file's test status (passed, failed, etc.).
  *
  *     'display_data' => Optional. A string of addition data to display
@@ -885,20 +878,20 @@ function pift_server_process_files($files) {
   $ftids = array();
   $time = time();
   foreach ($files as $file) {
-    if (pift_server_check_issue_filters($file['issue_id'])) {
-      // Update the entry that was originally entered for this file,
-      // and set the last tested timestamp to the current time.
-      db_query("UPDATE {pift_data} SET display_data = '%s', status = %d, timestamp = %d WHERE ftid = %d", $file['display_data'], $file['status'], $time, $file['ftid']);
-      // In case the file was removed from the testable files list
-      // from the time it was submitted.
-      if (db_affected_rows()) {
+    // Discard the result data if the file isn't a testable file anymore.
+    if ($nid = db_result(db_query("SELECT nid FROM {pift_data} WHERE ftid = %d", $file['ftid']))) {
+      if (pift_server_check_issue_filters($nid)) {
+        // Update the entry that was originally entered for this file,
+        // and set the last tested timestamp to the current time.
+        db_query("UPDATE {pift_data} SET display_data = '%s', status = %d, timestamp = %d WHERE ftid = %d", $file['display_data'], $file['status'], $time, $file['ftid']);
         $ftids[] = $file['ftid'];
+        $file['issue_id'] = $nid;
         pift_server_check_auto_followup($file);
       }
-    }
-    else {
-      // File test result didn't pass filters, but still update the testing timestamp.
-      db_query("UPDATE {pift_data} SET timestamp = %d WHERE ftid = %d", $time, $file['ftid']);
+      else {
+        // File test result didn't pass filters, but still update the testing timestamp.
+        db_query("UPDATE {pift_data} SET timestamp = %d WHERE ftid = %d", $time, $file['ftid']);
+      }
     }
   }
   pift_server_mail_failed_tests($ftids);

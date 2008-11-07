@@ -87,7 +87,6 @@ function pift_client_pift_client_process_file($server_key, $file) {
   $detail_link = l("{$base_url}/node/{$file['issue_id']}", "node/{$file['issue_id']}", array(), NULL, NULL, TRUE);
 
   $test_result['ftid'] = $file['ftid'];
-  $test_result['issue_id'] = $file['issue_id'];
 
   // Read in file.
   $fd = fopen($file['patch_url'], 'r');
