@@ -85,6 +85,13 @@ function pift_server_form_alter($form_id, &$form) {
 }
 
 /**
+ * Implementation of hook_perm().
+ */
+function pift_server_perm() {
+  return array('re-test files');
+}
+
+/**
  * Submits the pift subscription setting for the current user.
  */
 function pift_server_failed_test_mail_subscribe_submit($form_id, $form_values) {
@@ -359,6 +366,13 @@ function pift_server_menu($may_cache) {
         'type' => MENU_CALLBACK,
       );
     }
+    $items[] = array(
+      'path' => 'pift-server-request-retest',
+      'title' => t('Request to re-test a file'),
+      'callback' => 'pift_server_request_retest',
+      'access' => user_access('re-test files'),
+      'type' => MENU_CALLBACK,
+    );
   }
   else {
     // Include the CSS file.
@@ -491,6 +505,45 @@ function pift_server_debug_file_testing_link($ftid, $nid, $cid, $status) {
   );
   pift_server_process_files(array($file));
   drupal_goto();
+}
+
+/**
+ * Callback for manually requesting patch re-testing.
+ *
+ * @param $nid
+ *   The issue node ID.
+ * @param $ftid
+ *   PIFT's file testing ID
+ */
+function pift_server_request_retest($nid, $ftid) {
+  // Make sure we have all numeric args.
+  $args = func_get_args();
+  foreach ($args as $arg) {
+    if (!is_numeric($arg)) {
+      drupal_set_message(t('non-numeric argument passed'), 'error');
+      drupal_goto("node/$nid");
+    }
+  }
+
+  // Check issue filters here to provide an intelligent user
+  // message to the user if the filters don't pass.
+  if (pift_server_check_issue_filters($nid)) {
+    db_query("UPDATE {pift_data} SET display_data = '%s', status = %d WHERE ftid = %d", 'manual re-test', PIFT_RETEST, $ftid);
+    // In case the file was removed from the testable files list
+    // from the time it was submitted.
+    if (db_affected_rows()) {
+      drupal_set_message(t('The selected file has been submitted for re-testing.'));
+    }
+    else {
+      drupal_set_message(t('Invalid file submitted.'), 'error');
+    }
+
+  }
+  else {
+    drupal_set_message(t('The selected file is not currently eligible for re-testing, and was not submitted.'), 'error');
+  }
+
+  drupal_goto("node/$nid");
 }
 
 /**
@@ -1033,9 +1086,14 @@ function pift_server_nodeapi(&$node, $op, $arg) {
           $display = array();
 
           // Load the files into an array to pass to the theming function.
+          $retest = user_access('re-test files');
           while ($file = db_fetch_array($result)) {
+            $filename = check_plain($file['filename']);
+            if ($retest) {
+              $filename .= ' - '. l(t('Re-test'), "pift-server-request-retest/{$file['nid']}/{$file['ftid']}");
+            }
             $display[] = array(
-              'filename' => $file['filename'],
+              'filename' => $filename,
               'status' => $file['status'],
               'display_data' => filter_xss_admin($file['display_data']),  // Coming from a trusted server, relaxed filtering.
             );
@@ -1124,7 +1182,14 @@ function pift_server_comment(&$comment, $op) {
         $result = db_query("SELECT cu.cid, cu.filename, cu.description, pd.ftid, pd.nid, pd.cid, pd.display_data, pd.status FROM {pift_data} pd INNER JOIN {comment_upload_files} cu ON pd.fid = cu.fid WHERE pd.nid = %d AND pd.cid <> %d AND status <> %d ORDER BY ftid", $node->nid, 0, PIFT_UNTESTED);
 
         // Load the files into an array to pass to the theming function.
+        $retest = user_access('re-test files');
         while ($file = db_fetch_array($result)) {
+          $file['filename'] = check_plain($file['filename']);
+          $file['description'] = check_plain($file['description']);
+          if ($retest) {
+            $key = $file['description'] ? 'description' : 'filename';
+            $file[$key] .= ' - '. l(t('Re-test'), "pift-server-request-retest/{$file['nid']}/{$file['ftid']}");
+          }
           $cids[$file['cid']][] = array(
             'filename' => $file['filename'],
             'description' => $file['description'],
@@ -1254,7 +1319,7 @@ function theme_pift_server_results($results, $nid, $cid = NULL) {
 
   // One row for each file test result.
   foreach ($results as $result) {
-    $description = $result['description'] ? $result['description'] : basename($result['filename']);
+    $description = $result['description'] ? $result['description'] : $result['filename'];
     switch ($result['status']) {
       // File passed testing.
       case PIFT_PASSED:
