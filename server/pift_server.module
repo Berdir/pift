@@ -286,8 +286,8 @@ function pift_server_settings_form() {
     '#size' => 4,
     '#maxlength' => 4,
     '#title' => t('Auto followup issue status ID'),
-    '#description' => t("Set this to the numeric issue status ID you wish to use for auto followups, or leave blank to disable auto followups. Auto followups are posted upon return of a file's test results, and may also be triggered if the issue metadata for project, issue status, or release tag is changed.  The auto followup will set the issue's status to the issue status ID listed here, and leave a comment linking to the file result table for the tested file, if the following criteria are met:") . theme('item_list', $criteria),
-    '#default_value' => variable_get('pift_server_auto_followup_sid', ''),
+    '#description' => t("Set this to the numeric issue status ID you wish to use for auto followups, or set to 0 to disable auto followups. Auto followups are posted upon return of a file's test results, and may also be triggered if the issue metadata for project, issue status, or release tag is changed.  The auto followup will set the issue's status to the issue status ID listed here, and leave a comment linking to the file result table for the tested file, if the following criteria are met:") . theme('item_list', $criteria),
+    '#default_value' => variable_get('pift_server_auto_followup_sid', 0),
     '#validate' => array('pift_server_is_numeric_validate' => array()),
   );
 
@@ -1012,7 +1012,7 @@ function pift_server_check_issue_filters($nid) {
 function pift_server_check_auto_followup($file) {
 
   // Only if an auto change followup sid is set, and only for failed files.
-  if (variable_get('pift_server_auto_followup_sid', '') && $file['status'] == PIFT_FAILED) {
+  if (variable_get('pift_server_auto_followup_sid', 0) && $file['status'] == PIFT_FAILED) {
     $join = '';
     $where = '';
     $args = array($file['issue_id']);
@@ -1062,7 +1062,7 @@ function pift_server_auto_followup($last_file) {
 
   project_issue_add_followup(array(
     'nid' => $last_file->nid,
-    'sid' => variable_get('pift_server_auto_followup_sid', ''),
+    'sid' => variable_get('pift_server_auto_followup_sid', 0),
     'comment' => theme('pift_server_auto_close_message', $last_file),
   ));
 }
@@ -1255,7 +1255,7 @@ function pift_server_comment(&$comment, $op) {
 
 function pift_server_check_followup_metadata($comment) {
 
-  $auto_followup_sid = variable_get('pift_server_auto_followup_sid', '');
+  $auto_followup_sid = variable_get('pift_server_auto_followup_sid', 0);
 
   // If no auto followup sid exists, then this check isn't necessary.
   if (!$auto_followup_sid) {
