@@ -368,7 +368,8 @@ function pift_server_menu($may_cache) {
     $items[] = array(
       'path' => 'pift-server-request-retest',
       'title' => t('Request to re-test a file'),
-      'callback' => 'pift_server_request_retest',
+      'callback' => 'drupal_get_form',
+      'callback arguments' => array('pift_server_request_retest_confirm_form'),
       'access' => user_access('re-test files'),
       'type' => MENU_CALLBACK,
     );
@@ -508,14 +509,21 @@ function pift_server_debug_file_testing_link($ftid, $status) {
 }
 
 /**
- * Callback for manually requesting patch re-testing.
+ * Builds form for confirming patch retesting.
  *
  * @param $nid
- *   The issue node ID.
+ *   The node ID of the issue the patch is attached to.
+ * @param $cid
+ *   The comment ID of the followup the patch is attached
+ *   to, if any.
  * @param $ftid
- *   PIFT's file testing ID
+ *   The file testing ID of the file to be sent for retesting.
+ * @return
+ *   A form array.
+ *
  */
-function pift_server_request_retest($nid, $ftid) {
+function pift_server_request_retest_confirm_form($nid, $cid, $ftid) {
+
   // Make sure we have all numeric args.
   $args = func_get_args();
   foreach ($args as $arg) {
@@ -525,25 +533,57 @@ function pift_server_request_retest($nid, $ftid) {
     }
   }
 
+  if ($cid) {
+    $file_info = db_fetch_object(db_query("SELECT pd.ftid, pd.nid, cu.filename FROM {pift_data} pd INNER JOIN {comment_upload_files} cu ON pd.fid = cu.fid WHERE pd.ftid = %d", $ftid));
+  }
+  else {
+    $file_info = db_fetch_object(db_query("SELECT pd.ftid, pd.nid, f.filename FROM {pift_data} pd INNER JOIN {files} f ON pd.fid = f.fid WHERE pd.ftid = %d", $ftid));
+  }
+
+  if ($file_info) {
+    $form = array();
+    $form['file_info'] = array(
+      '#type' => 'value',
+      '#value' => $file_info,
+    );
+
+    return confirm_form(
+      $form,
+      t('Are you sure you want to submit %file for re-testing?', array('%file' => $file_info->filename)),
+      'node/'. $file_info->nid,
+      '',
+      t('Retest file'),
+      t('Cancel'));
+  }
+  else {
+    drupal_set_message(t('Invalid file submitted.'), 'error');
+    drupal_goto("node/$nid");
+  }
+}
+
+/**
+ * Manually requests patch re-testing.
+ */
+function pift_server_request_retest_confirm_form_submit($form_id, $form_values) {
+  $file_info = $form_values['file_info'];
   // Check issue filters here to provide an intelligent user
   // message to the user if the filters don't pass.
-  if (pift_server_check_issue_filters($nid)) {
-    db_query("UPDATE {pift_data} SET display_data = '%s', status = %d WHERE ftid = %d", 'manual re-test', PIFT_RETEST, $ftid);
+  if (pift_server_check_issue_filters($file_info->nid)) {
+    db_query("UPDATE {pift_data} SET display_data = '%s', status = %d WHERE ftid = %d", 'manual re-test', PIFT_RETEST, $file_info->ftid);
     // In case the file was removed from the testable files list
     // from the time it was submitted.
     if (db_affected_rows()) {
-      drupal_set_message(t('The selected file has been submitted for re-testing -- results will be posted when testing completes.'));
+      drupal_set_message(t('%file has been submitted for re-testing -- results will be posted when testing completes.', array('%file' => $file_info->filename)));
     }
     else {
       drupal_set_message(t('Invalid file submitted.'), 'error');
     }
-
   }
   else {
-    drupal_set_message(t('The selected file is not currently eligible for re-testing, and was not submitted.'), 'error');
+    drupal_set_message(t('%file is not currently eligible for re-testing, and was not submitted.', array('%file' => $file_info->filename)), 'error');
   }
 
-  drupal_goto("node/$nid");
+  drupal_goto("node/$file_info->nid");
 }
 
 /**
@@ -1096,7 +1136,7 @@ function pift_server_nodeapi(&$node, $op, $arg) {
           }
           // Display table just below file attachment.
           $node->content['file_test_data'] = array(
-            '#value' => theme('pift_server_results', $display, $node->nid, NULL, $retest),
+            '#value' => theme('pift_server_results', $display, $node->nid, 0, $retest),
             '#weight' => 51,  // Just below the upload attachments.
           );
           // Debug display.
@@ -1325,7 +1365,7 @@ function theme_pift_server_results($results, $nid, $cid, $retest) {
   // One row for each file test result.
   foreach ($results as $ftid => $result) {
     $description = $result['description'] ? $result['description'] : $result['filename'];
-    $retest_link = $retest ? ' - '. l(t('Request re-test'), "pift-server-request-retest/$nid/$ftid") : '';
+    $retest_link = $retest ? ' - '. l(t('Request re-test'), "pift-server-request-retest/$nid/$cid/$ftid") : '';
     switch ($result['status']) {
       // File passed testing.
       case PIFT_PASSED:
