@@ -532,7 +532,7 @@ function pift_server_request_retest($nid, $ftid) {
     // In case the file was removed from the testable files list
     // from the time it was submitted.
     if (db_affected_rows()) {
-      drupal_set_message(t('The selected file has been submitted for re-testing.'));
+      drupal_set_message(t('The selected file has been submitted for re-testing -- results will be posted when testing completes.'));
     }
     else {
       drupal_set_message(t('Invalid file submitted.'), 'error');
@@ -1088,19 +1088,15 @@ function pift_server_nodeapi(&$node, $op, $arg) {
           // Load the files into an array to pass to the theming function.
           $retest = user_access('re-test files');
           while ($file = db_fetch_array($result)) {
-            $filename = check_plain($file['filename']);
-            if ($retest) {
-              $filename .= ' - '. l(t('Re-test'), "pift-server-request-retest/{$file['nid']}/{$file['ftid']}");
-            }
-            $display[] = array(
-              'filename' => $filename,
+            $display[$file['ftid']] = array(
+              'filename' => check_plain($file['filename']),
               'status' => $file['status'],
               'display_data' => filter_xss_admin($file['display_data']),  // Coming from a trusted server, relaxed filtering.
             );
           }
           // Display table just below file attachment.
           $node->content['file_test_data'] = array(
-            '#value' => theme('pift_server_results', $display, $node->nid),
+            '#value' => theme('pift_server_results', $display, $node->nid, NULL, $retest),
             '#weight' => 51,  // Just below the upload attachments.
           );
           // Debug display.
@@ -1184,15 +1180,9 @@ function pift_server_comment(&$comment, $op) {
         // Load the files into an array to pass to the theming function.
         $retest = user_access('re-test files');
         while ($file = db_fetch_array($result)) {
-          $file['filename'] = check_plain($file['filename']);
-          $file['description'] = check_plain($file['description']);
-          if ($retest) {
-            $key = $file['description'] ? 'description' : 'filename';
-            $file[$key] .= ' - '. l(t('Re-test'), "pift-server-request-retest/{$file['nid']}/{$file['ftid']}");
-          }
-          $cids[$file['cid']][] = array(
-            'filename' => $file['filename'],
-            'description' => $file['description'],
+          $cids[$file['cid']][$file['ftid']] = array(
+            'filename' => check_plain($file['filename']),
+            'description' => check_plain($file['description']),
             'status' => $file['status'],
             'display_data' => filter_xss_admin($file['display_data']),
           );
@@ -1200,7 +1190,7 @@ function pift_server_comment(&$comment, $op) {
 
         // Convert the results to themed display tables.
         foreach ($cids as $cid => $display) {
-          $cids[$cid] = theme('pift_server_results', $display, $nid, $cid);
+          $cids[$cid] = theme('pift_server_results', $display, $nid, $cid, $retest);
         }
       }
 
@@ -1323,23 +1313,26 @@ function pift_server_check_followup_metadata($comment) {
  *   The issue node ID.
  * @param $cid
  *   The comment ID (optional).
+ * @param $retest
+ *   Boolean indicating if a re-test link should be provided.
  * @return
  *   An HTML string of the rendered table.
  */
-function theme_pift_server_results($results, $nid, $cid = NULL) {
+function theme_pift_server_results($results, $nid, $cid, $retest) {
   $rows = array();
   $output = '';
 
   // One row for each file test result.
-  foreach ($results as $result) {
+  foreach ($results as $ftid => $result) {
     $description = $result['description'] ? $result['description'] : $result['filename'];
+    $retest_link = $retest ? ' - '. l(t('Request re-test'), "pift-server-request-retest/$nid/$ftid") : '';
     switch ($result['status']) {
       // File passed testing.
       case PIFT_PASSED:
         $rows[] = array(
           'data' => array(
             $description,
-            t('passed'),
+            t('passed') . $retest_link,
             $result['display_data'],  // Already filtered.
           ),
           'class' => 'pift-passed',
@@ -1350,7 +1343,7 @@ function theme_pift_server_results($results, $nid, $cid = NULL) {
         $rows[] = array(
           'data' => array(
             $description,
-            t('failed'),
+            t('failed') . $retest_link,
             $result['display_data'],  // Already filtered.
           ),
           'class' => 'pift-failed',
