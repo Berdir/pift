@@ -551,7 +551,7 @@ function pift_server_request_retest_confirm_form($nid, $cid, $ftid) {
       $form,
       t('Are you sure you want to submit %file for re-testing?', array('%file' => $file_info->filename)),
       'node/'. $file_info->nid,
-      '',
+      t("The file will only be sent for testing if the current issue's Project, Status, and Release tag settings match the current issue filter settings."),
       t('Retest file'),
       t('Cancel'));
   }
