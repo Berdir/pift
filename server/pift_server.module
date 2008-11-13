@@ -714,10 +714,11 @@ function pift_server_send_file_data() {
 
   // Set up the resend time limit.
   $resend_time = time() - (PIFT_RESEND_TIME * 60 * 60);
+  $retest_time = time() - (PIFT_RETEST_TIME * 60 * 60);
 
   $where = '';
   $where_args = array();
-  $sub_query_args = array(PIFT_UNTESTED, $resend_time, PIFT_RETEST, 0);
+  $sub_query_args = array(PIFT_UNTESTED, $resend_time, PIFT_RETEST, $retest_time, 0);
 
   // Restrict to listed projects, if set.
   if ($projects = pift_server_project_list()) {
@@ -754,7 +755,7 @@ function pift_server_send_file_data() {
   //    since their last send (includes newly added files).
   // 2. All files that have been marked for re-testing.
   // This is one god awful query...  :(
-  $files = db_query_range("(SELECT pd.ftid, pd.cid, n.nid AS issue_id, n.title AS issue_title, n.uid, pi.pid, pi.rid, f.filepath AS patch_url, p.title AS project, u.name AS submitter$select FROM {pift_data} pd INNER JOIN {project_issues} pi ON pd.nid = pi.nid INNER JOIN {files} f ON pd.fid = f.fid INNER JOIN {node} n ON n.nid = pi.nid INNER JOIN {node} p ON p.nid = pi.pid INNER JOIN {users} u ON u.uid = pd.uid$join WHERE ((pd.status = %d AND pd.timestamp < %d) OR pd.status = %d) AND pd.cid = %d$where) UNION (SELECT pd.ftid, pd.cid, n.nid AS issue_id, n.title AS issue_title, n.uid, pi.pid, pi.rid, cu.filepath AS patch_url, p.title AS project, u.name AS submitter$select FROM {pift_data} pd INNER JOIN {project_issues} pi ON pd.nid = pi.nid INNER JOIN {comment_upload_files} cu ON pd.fid = cu.fid INNER JOIN {node} n ON n.nid = pi.nid INNER JOIN {node} p ON p.nid = pi.pid INNER JOIN {users} u ON u.uid = pd.uid$join WHERE ((pd.status = %d AND pd.timestamp < %d) OR pd.status = %d) AND pd.cid <> %d$where) ORDER BY ftid", $args, 0, PIFT_SEND_LIMIT);
+  $files = db_query_range("(SELECT pd.ftid, pd.cid, n.nid AS issue_id, n.title AS issue_title, n.uid, pi.pid, pi.rid, f.filepath AS patch_url, p.title AS project, u.name AS submitter$select FROM {pift_data} pd INNER JOIN {project_issues} pi ON pd.nid = pi.nid INNER JOIN {files} f ON pd.fid = f.fid INNER JOIN {node} n ON n.nid = pi.nid INNER JOIN {node} p ON p.nid = pi.pid INNER JOIN {users} u ON u.uid = pd.uid$join WHERE ((pd.status = %d AND pd.timestamp < %d) OR (pd.status = %d AND pd.timestamp < %d)) AND pd.cid = %d$where) UNION (SELECT pd.ftid, pd.cid, n.nid AS issue_id, n.title AS issue_title, n.uid, pi.pid, pi.rid, cu.filepath AS patch_url, p.title AS project, u.name AS submitter$select FROM {pift_data} pd INNER JOIN {project_issues} pi ON pd.nid = pi.nid INNER JOIN {comment_upload_files} cu ON pd.fid = cu.fid INNER JOIN {node} n ON n.nid = pi.nid INNER JOIN {node} p ON p.nid = pi.pid INNER JOIN {users} u ON u.uid = pd.uid$join WHERE ((pd.status = %d AND pd.timestamp < %d) OR (pd.status = %d AND pd.timestamp < %d)) AND pd.cid <> %d$where) ORDER BY ftid", $args, 0, PIFT_SEND_LIMIT);
 
   // Nothing to do.
   if (!db_num_rows($files)) {
