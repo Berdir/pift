@@ -551,7 +551,7 @@ function pift_server_request_retest_confirm_form($nid, $cid, $ftid) {
       $form,
       t('Are you sure you want to submit %file for re-testing?', array('%file' => $file_info->filename)),
       'node/'. $file_info->nid,
-      t("The file will only be sent for testing if the current issue's Project, Status, and Release tag settings match the current issue filter settings."),
+      '',
       t('Retest file'),
       t('Cancel'));
   }
@@ -1127,7 +1127,7 @@ function pift_server_nodeapi(&$node, $op, $arg) {
           $display = array();
 
           // Load the files into an array to pass to the theming function.
-          $retest = user_access('re-test files');
+          $retest = user_access('re-test files') && pift_server_check_issue_filters($node->nid);
           while ($file = db_fetch_array($result)) {
             $display[$file['ftid']] = array(
               'filename' => check_plain($file['filename']),
@@ -1219,7 +1219,7 @@ function pift_server_comment(&$comment, $op) {
         $result = db_query("SELECT cu.cid, cu.filename, cu.description, pd.ftid, pd.nid, pd.cid, pd.display_data, pd.status FROM {pift_data} pd INNER JOIN {comment_upload_files} cu ON pd.fid = cu.fid WHERE pd.nid = %d AND pd.cid <> %d AND status <> %d ORDER BY ftid", $node->nid, 0, PIFT_UNTESTED);
 
         // Load the files into an array to pass to the theming function.
-        $retest = user_access('re-test files');
+        $retest = user_access('re-test files') && pift_server_check_issue_filters($nid);
         while ($file = db_fetch_array($result)) {
           $cids[$file['cid']][$file['ftid']] = array(
             'filename' => check_plain($file['filename']),
