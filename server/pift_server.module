@@ -1390,6 +1390,16 @@ function theme_pift_server_results($results, $nid, $cid, $retest) {
           'class' => 'pift-failed',
         );
         break;
+      case PIFT_RETEST:
+        $rows[] = array(
+          'data' => array(
+            $description,
+            t('re-testing'),
+            '',
+          ),
+          'class' => 'pift-retest',
+        );
+        break;
     }
   }
 
