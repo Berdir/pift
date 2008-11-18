@@ -569,7 +569,11 @@ function pift_server_request_retest_confirm_form_submit($form_id, $form_values) 
   // Check issue filters here to provide an intelligent user
   // message to the user if the filters don't pass.
   if (pift_server_check_issue_filters($file_info->nid)) {
-    db_query("UPDATE {pift_data} SET display_data = '%s', status = %d WHERE ftid = %d", 'manual re-test', PIFT_RETEST, $file_info->ftid);
+    // Mark for re-testing.  Set last tested timestamp to zero here
+    // so the file doesn't have to wait the whole PIFT_RETEST period
+    // to be sent for testing -- the timestamp will be updated as soon
+    // as the file is sent anyways.
+    db_query("UPDATE {pift_data} SET display_data = '%s', status = %d, timestamp = %d WHERE ftid = %d", 'manual re-test', PIFT_RETEST, 0, $file_info->ftid);
     // In case the file was removed from the testable files list
     // from the time it was submitted.
     if (db_affected_rows()) {
