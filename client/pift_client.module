@@ -5,6 +5,10 @@
 define('PIFT_PASSED', 1);
 define('PIFT_FAILED', 2);
 
+// PIFR file test responses.
+define('PIFR_RESPONSE_ACCEPTED', 1);
+define('PIFR_RESPONSE_INVALID_SERVER', 2);
+
 /**
  * Implementation of hook_help().
  */
@@ -27,7 +31,7 @@ function pift_client_xmlrpc() {
     array(
       'pifr.batch.queue',
       'pift_client_process_files',
-      array('struct', 'string', 'struct'),
+      array('int', 'string', 'struct'),
       t('test project issue files')
     ),
   );
@@ -41,6 +45,8 @@ function pift_client_process_files($server_key, $files) {
   foreach ($files as $file) {
     module_invoke_all('pift_client_process_file', $server_key, $file);
   }
+
+  return PIFR_RESPONSE_ACCEPTED;
 }
 
 /**

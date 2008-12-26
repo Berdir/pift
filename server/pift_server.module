@@ -23,6 +23,10 @@ define('PIFT_FAILED', 2);
 define('PIFT_RETEST', 3);
 define('PIFT_NOT_READABLE', 4);
 
+// PIFR file test responses.
+define('PIFR_RESPONSE_ACCEPTED', 1);
+define('PIFR_RESPONSE_INVALID_SERVER', 2);
+
 /**
  * Implementation of hook_cron().
  */
@@ -811,20 +815,22 @@ function pift_server_send_file_data() {
     // Send batch.
     $result = xmlrpc($servers[$s]['xmlrpc_url'], 'pifr.batch.queue', $server_key, $batch);
 
-    // Failed XML-RPC call.
-    if ($result === FALSE) {
-      pift_server_xmlrpc_error_handler($servers[$s]);
-    }
-    // Failed test server validation.
-    elseif (isset($result['error'])) {
-      pift_server_xmlrpc_error_handler($servers[$s], $result['error']);
-    }
     // List of successful sends.
-    else {
+    if ($result == PIFR_RESPONSE_ACCEPTED) {
       // Update the last sent timestamp for this batch of files.
       db_query("UPDATE {pift_data} SET timestamp = %d WHERE ftid IN (". implode(', ', $sent_files[$bid]) .")", time());
       $sent[] = check_plain($servers[$s]['xmlrpc_url']) .' -- '. format_plural(count($sent_files[$bid]), '1 file sent', '@count files sent');
     }
+
+    // Failed XML-RPC call.
+    elseif ($result === FALSE) {
+      pift_server_xmlrpc_error_handler($servers[$s]);
+    }
+    // Failed test server validation.
+    else {
+      pift_server_xmlrpc_error_handler($servers[$s], $result);
+    }
+
     // Next server in line.
     $s++;
     variable_set('pift_next_test_server', $s);
@@ -1463,10 +1469,7 @@ function pift_server_xmlrpc_error_handler($server, $error_code = NULL) {
   $t_args = array('%url' => $base_url, '%xmlrpc_url' => $server['xmlrpc_url']);
 
   switch ($error_code) {
-    case 'PIFT_XMLRPC_INVALID_SERVER':
-      watchdog('project_remote', t('%url is not listed as a valid project server at test server %xmlrpc_url', $t_args), WATCHDOG_ERROR);
-      break;
-    case 'PIFT_XMLRPC_INVALID_SERVER_KEY':
+    case PIFR_RESPONSE_INVALID_SERVER:
       watchdog('project_remote', t('Unable to log in %url to %xmlrpc_url -- invalid server key.', $t_args), WATCHDOG_ERROR);
       break;
     default:
