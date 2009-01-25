@@ -12,8 +12,8 @@ define('PIFR_RESPONSE_INVALID_SERVER', 2);
 /**
  * Implementation of hook_help().
  */
-function pift_client_help($section) {
-  switch ($section) {
+function pift_client_help($path, $arg) {
+  switch ($path) {
     // Admin settings page.
     case 'admin/settings/project-issue-file-test-client':
       return t("
@@ -90,7 +90,7 @@ function pift_client_process_files($server_key, $files) {
 function pift_client_pift_client_process_file($server_key, $file) {
   global $base_url;
 
-  $detail_link = l("{$base_url}/node/{$file['issue_id']}", "node/{$file['issue_id']}", array(), NULL, NULL, TRUE);
+  $detail_link = l("{$base_url}/node/{$file['issue_id']}", "node/{$file['issue_id']}", array('absolute' => TRUE));
 
   $test_result['ftid'] = $file['ftid'];
 
@@ -155,7 +155,7 @@ function pift_client_send_test_results($server, $files) {
     pift_client_xmlrpc_error_handler($server, $result['error']);
   }
   else {
-    watchdog('project_remote', t('File test results sent successfully to %project_server', array('%project_server' => $project_server)));
+    watchdog('project_remote', 'File test results sent successfully to %project_server', array('%project_server' => $project_server));
   }
 }
 
@@ -177,13 +177,13 @@ function pift_client_xmlrpc_error_handler($server, $error_code = NULL) {
 
   switch ($error_code) {
     case 'PIFT_XMLRPC_INVALID_SERVER':
-      watchdog('project_remote', t('%url is not listed as a valid project server at test server %url', $t_args), WATCHDOG_ERROR);
+      watchdog('project_remote', '%url is not listed as a valid project server at test server %url', $t_args, WATCHDOG_ERROR);
       break;
     case 'PIFT_XMLRPC_INVALID_SERVER_KEY':
-      watchdog('project_remote', t('Unable to log in %url to %url -- invalid server key.', $t_args), WATCHDOG_ERROR);
+      watchdog('project_remote', 'Unable to log in %url to %url -- invalid server key.', $t_args, WATCHDOG_ERROR);
       break;
     default:
-      watchdog('project_remote', t('XML-RPC error communicating with %url', $t_args), WATCHDOG_ERROR);
+      watchdog('project_remote', 'XML-RPC error communicating with %url', $t_args, WATCHDOG_ERROR);
       break;
   }
 }
