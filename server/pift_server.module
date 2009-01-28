@@ -1,6 +1,30 @@
 <?php
 // $Id$
 
+/* TODO New hook_mail implementation
+   Because of changes to drupal_mail function, you need to move the variables
+   setup and string replace commands into the hook_mail implementation and then
+   call drupal_mail with the name of the module which contains this
+   implementation, the mailkey, the recipient, the language of the user the mail
+   goes to and some arbitrary parameters. */
+
+
+/* TODO Check node access before emailing content
+   Modules like Organic Groups and Project Issue send the same content as an
+   email notifications to many users. They should now be using the new 3rd
+   parameter to node_access() to check access on the content before emailing it.
+   Note that db_rewrite_sql() provodes no protection because the recipient is not
+   the logged in user who is receiving the content. */
+
+
+/* TODO New user_mail_tokens() method may be useful.
+   user.module now provides a user_mail_tokens() function to return an array
+   of the tokens available for the email notification messages it sends when
+   accounts are created, activated, blocked, etc. Contributed modules that
+   wish to make use of the same tokens for their own needs are encouraged
+   to use this function. */
+
+
 /**
  * Advanced settings section
  */
@@ -51,7 +75,7 @@ function pift_server_cron() {
 /**
  * Implementation of hook_form_alter.
  */
-function pift_server_form_alter($form_id, &$form) {
+function pift_server_form_alter(&$form, &$form_state, $form_id) {
   global $user;
   switch ($form_id) {
     case 'project_issue_subscribe':
@@ -65,7 +89,7 @@ function pift_server_form_alter($form_id, &$form) {
         '#description' => t('Check here to receive e-mail notification when one of your posted patches fails regression testing.'),
         '#weight' => -10,
       );
-      $form['#submit']['pift_server_failed_test_mail_subscribe_submit'] = array();
+      $form['#submit'][] = 'pift_server_failed_test_mail_subscribe_submit';
       break;
     case 'comment_form':
       $node = node_load($form['nid']['#value']);
@@ -96,12 +120,33 @@ function pift_server_perm() {
 }
 
 /**
+ * Implementation of hook_theme().
+ */
+function pift_server_theme() {
+  return array(
+    'pift_server_results' => array(
+      'arguments' => array(
+        'results' => NULL,
+        'nid' => NULL,
+        'cid' => NULL,
+        'retest' => NULL,
+      ),
+    ),
+    'pift_server_auto_close_message' => array(
+      'arguments' => array(
+        'last_file' => NULL,
+      ),
+    ),
+  );
+}
+
+/**
  * Submits the pift subscription setting for the current user.
  */
-function pift_server_failed_test_mail_subscribe_submit($form_id, $form_values) {
+function pift_server_failed_test_mail_subscribe_submit($form, &$form_state) {
   global $user;
   // Only insert a row if the checkbox is newly checked.
-  if ($form_values['pift_server_failed_test_mail_subscribe']) {
+  if ($form_state['values']['pift_server_failed_test_mail_subscribe']) {
     if (!db_result(db_query("SELECT uid FROM {pift_subscriptions} WHERE uid = %d", $user->uid))) {
       db_query("INSERT INTO {pift_subscriptions} (uid) VALUES (%d)", $user->uid);
     }
@@ -115,8 +160,8 @@ function pift_server_failed_test_mail_subscribe_submit($form_id, $form_values) {
 /**
  * Implementation of hook_help().
  */
-function pift_server_help($section) {
-  switch ($section) {
+function pift_server_help($path, $arg) {
+  switch ($path) {
     // Server settings page.
     case 'admin/project/project-issue-test-file-server':
       return t("
@@ -211,7 +256,7 @@ function pift_server_settings_form() {
     '#default_value' => variable_get('pift_send_limit', 100),
     '#size' => 10,
     '#maxlength' => 10,
-    '#validate' => array('pift_server_is_numeric_validate' => array()),
+    '#element_validate' => array('pift_server_is_numeric_validate'),
   );
 
   $form['advanced']['pift_batch_size'] = array(
@@ -222,7 +267,7 @@ function pift_server_settings_form() {
     '#default_value' => variable_get('pift_batch_size', 20),
     '#size' => 10,
     '#maxlength' => 10,
-    '#validate' => array('pift_server_is_numeric_validate' => array()),
+    '#element_validate' => array('pift_server_is_numeric_validate'),
   );
 
   $form['advanced']['pift_file_regex'] = array(
@@ -241,7 +286,7 @@ function pift_server_settings_form() {
     '#default_value' => variable_get('pift_resend_time', 2),
     '#size' => 4,
     '#maxlength' => 4,
-    '#validate' => array('pift_server_is_numeric_validate' => array()),
+    '#element_validate' => array('pift_server_is_numeric_validate'),
   );
 
   $form['advanced']['pift_retest_time'] = array(
@@ -252,7 +297,7 @@ function pift_server_settings_form() {
     '#default_value' => variable_get('pift_retest_time', 24),
     '#size' => 4,
     '#maxlength' => 4,
-    '#validate' => array('pift_server_is_numeric_validate' => array()),
+    '#element_validate' => array('pift_server_is_numeric_validate'),
   );
 
   $form['advanced']['pift_projects'] = array(
@@ -260,7 +305,7 @@ function pift_server_settings_form() {
     '#title' => t('Projects to test'),
     '#description' => t("A comma separated list of project ID's (nids) that will be examined for new files. Leave empty for all projects."),
     '#default_value' => variable_get('pift_projects', ''),
-    '#validate' => array('pift_server_comma_separated_numeric_validate' => array()),
+    '#element_validate' => array('pift_server_comma_separated_numeric_validate'),
   );
 
   $form['advanced']['pift_test_status'] = array(
@@ -268,7 +313,7 @@ function pift_server_settings_form() {
     '#title' => t('List of issue statuses to test'),
     '#description' => t("Test files attached to issues that have the following issue statuses (should be a comma separated list of issue sids). Leave empty to test every status."),
     '#default_value' => variable_get('pift_test_status', '8, 14'),
-    '#validate' => array('pift_server_comma_separated_numeric_validate' => array()),
+    '#element_validate' => array('pift_server_comma_separated_numeric_validate'),
   );
 
   if (module_exists('project_release')) {
@@ -292,20 +337,20 @@ function pift_server_settings_form() {
     '#title' => t('Auto followup issue status ID'),
     '#description' => t("Set this to the numeric issue status ID you wish to use for auto followups, or set to 0 to disable auto followups. Auto followups are posted upon return of a file's test results, and may also be triggered if the issue metadata for project, issue status, or release tag is changed.  The auto followup will set the issue's status to the issue status ID listed here, and leave a comment linking to the file result table for the tested file, if the following criteria are met:") . theme('item_list', $criteria),
     '#default_value' => variable_get('pift_server_auto_followup_sid', 0),
-    '#validate' => array('pift_server_is_numeric_validate' => array()),
+    '#element_validate' => array('pift_server_is_numeric_validate'),
   );
 
   // Custom submit handler
-  $form['#submit']['pift_server_settings_form_extra_submit'] = array();
+  $form['#submit'][] = 'pift_server_settings_form_extra_submit';
   // system_settings_form() doesn't add the default if #submit already exists.
-  $form['#submit']['system_settings_form_submit'] = array();
+  // $form['#submit'][] = 'system_settings_form_submit';
   return system_settings_form($form);
 }
 
 /**
  * Validation for numeric textfields.
  */
-function pift_server_is_numeric_validate($form) {
+function pift_server_is_numeric_validate($form, &$form_state) {
   if (!is_numeric($form['#value'])) {
     form_set_error($form['#name'], t('%title must be a number.', array('%title' => $form['#title'])));
   }
@@ -314,7 +359,7 @@ function pift_server_is_numeric_validate($form) {
 /**
  * Validation for comma separated numeric textfields.
  */
-function pift_server_comma_separated_numeric_validate($form) {
+function pift_server_comma_separated_numeric_validate($form, &$form_state) {
   if ($values = $form['#value']) {
     $values = explode(',', $values);
     $values = array_map('trim', $values);
@@ -330,66 +375,62 @@ function pift_server_comma_separated_numeric_validate($form) {
 /**
  * Handles extra submission tasks on the admin settings page.
  */
-function pift_server_settings_form_extra_submit($form_id, $values) {
-  global $form_values;
+function pift_server_settings_form_extra_submit($form, &$form_state) {
 
   // Reset the queue.
-  if ($values['pift_server_reset_send_queue']) {
+  if ($form_state['values']['pift_server_reset_send_queue']) {
     pift_server_reset_send_queue();
     drupal_set_message(t('Send queue reset.'));
   }
   // Remove the setting so it's not saved to {variable}.
-  unset($form_values['pift_server_reset_send_queue']);
+  unset($form_state['values']['pift_server_reset_send_queue']);
+}
+
+function pift_server_init() {
+  // Include the CSS file.
+  drupal_add_css(drupal_get_path('module', 'pift_server') .'/pift_server.css');
 }
 
 /**
  * Implementation of hook_menu().
  */
-function pift_server_menu($may_cache) {
+function pift_server_menu() {
   $items = array();
 
-  if ($may_cache) {
-    $access_admin = user_access('administer projects');
-    // Admin settings page.
-    $items[] = array(
-      'path' => 'admin/project/project-issue-file-test-server',
-      'title' => t('Project issue file test server settings'),
-      'description' => t('Configure sending file tests to test servers.'),
-      'callback' => 'drupal_get_form',
-      'callback arguments' => array('pift_server_settings_form'),
-      'access' => $access_admin,
-      'type' => MENU_NORMAL_ITEM,
-    );
-    // Debug testing links.
-    $items[] = array(
-      'path' => 'pift-server-file-testing-link',
-      'title' => t('Debug links for file test results'),
-      'callback' => 'pift_server_debug_file_testing_link',
-      'access' => TRUE,
-      'type' => MENU_CALLBACK,
-    );
-    // Manual request for re-test.
-    $items[] = array(
-      'path' => 'pift-server-request-retest',
-      'title' => t('Request to re-test a file'),
-      'callback' => 'drupal_get_form',
-      'callback arguments' => array('pift_server_request_retest_confirm_form'),
-      'access' => user_access('re-test files'),
-      'type' => MENU_CALLBACK,
-    );
-  }
-  else {
-    // Include the CSS file.
-    drupal_add_css(drupal_get_path('module', 'pift_server') .'/pift_server.css');
-  }
+  $access_admin = array('administer projects');
+  // Admin settings page.
+  $items['admin/project/project-issue-file-test-server'] = array(
+    'title' => 'Project issue file test server settings',
+    'description' => 'Configure sending file tests to test servers.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('pift_server_settings_form'),
+    'access callback' => 'user_access',
+    'access arguments' => $access_admin,
+    'type' => MENU_NORMAL_ITEM,
+  );
+  // Debug testing links.
+  $items['pift-server-file-testing-link'] = array(
+    'title' => 'Debug links for file test results',
+    'page callback' => 'pift_server_debug_file_testing_link',
+    'access callback' => 'user_access',
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+  // Manual request for re-test.
+  $items['pift-server-request-retest'] = array(
+    'title' => 'Request to re-test a file',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('pift_server_request_retest_confirm_form'),
+    'access callback' => 'user_access',
+    'access arguments' => array('re-test files'),
+    'type' => MENU_CALLBACK,
+  );
 
   return $items;
 }
 
 /**
- * Sets the last processed issue/followup to the most
- * recently posted issue/followup, sets the last sent
- * time to the current time, and empties the send queue.
+ * Empties the send queue.
  */
 function pift_server_reset_send_queue() {
   variable_set('pift_server_last_sent', time());
@@ -410,8 +451,7 @@ function pift_server_add_issue_files($files) {
     foreach ($files as $file) {
       // Put the file data into the send queue.
       if (preg_match(PIFT_FILE_REGEX, $file->filename) && file_exists($file->filepath)) {
-        $ftid = db_next_id('{pift_data}_ftid');
-        db_query("INSERT INTO {pift_data} (ftid, fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, %d, '%s', %d, %d)", $ftid, $file->fid, $file->nid, 0, $user->uid, '', PIFT_UNTESTED, 0);
+        db_query("INSERT INTO {pift_data} (fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, '%s', %d, %d)", $file->fid, $file->nid, 0, $user->uid, '', PIFT_UNTESTED, 0);
       }
     }
   }
@@ -429,8 +469,7 @@ function pift_server_add_followup_files($files) {
     foreach ($files as $file) {
       // Put the file data into the send queue.
       if (preg_match(PIFT_FILE_REGEX, $file->filename) && file_exists($file->filepath)) {
-        $ftid = db_next_id('{pift_data}_ftid');
-        db_query("INSERT INTO {pift_data} (ftid, fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, %d, '%s', %d, %d)", $ftid, $file->fid, $file->nid, $file->cid, $user->uid, '', PIFT_UNTESTED, 0);
+        db_query("INSERT INTO {pift_data} (fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, '%s', %d, %d)", $file->fid, $file->nid, $file->cid, $user->uid, '', PIFT_UNTESTED, 0);
       }
     }
   }
@@ -454,9 +493,9 @@ function pift_server_build_file_testing_links($file) {
 
   $links = '';
   $links .= '<div>';
-  $links .= l(t("Manually pass testing"), "pift-server-file-testing-link/$file->ftid/$pass", array(), $query) . $for_file;
+  $links .= l(t("Manually pass testing"), "pift-server-file-testing-link/$file->ftid/$pass", array('query' => $query)) . $for_file;
   $links .= '</div><div>';
-  $links .= l(t("Manually fail testing"), "pift-server-file-testing-link/$file->ftid/$fail", array(), $query) . $for_file;
+  $links .= l(t("Manually fail testing"), "pift-server-file-testing-link/$file->ftid/$fail", array('query' => $query)) . $for_file;
   $links .= '</div>';
 
   return $links;
@@ -568,8 +607,8 @@ function pift_server_request_retest_confirm_form($nid, $cid, $ftid) {
 /**
  * Manually requests patch re-testing.
  */
-function pift_server_request_retest_confirm_form_submit($form_id, $form_values) {
-  $file_info = $form_values['file_info'];
+function pift_server_request_retest_confirm_form_submit($form, &$form_state) {
+  $file_info = $form_state['values']['file_info'];
   // Check issue filters here to provide an intelligent user
   // message to the user if the filters don't pass.
   if (pift_server_check_issue_filters($file_info->nid)) {
@@ -708,7 +747,7 @@ function pift_server_send_file_data() {
         }
         // Bad server URL.
         else {
-          watchdog('project_remote', t('%server is an invalid URL.', array('%server' => $server_xmlrpc_url)), WATCHDOG_ERROR);
+          watchdog('project_remote', '%server is an invalid URL.', array('%server' => $server_xmlrpc_url), WATCHDOG_ERROR);
         }
       }
     }
@@ -765,11 +804,6 @@ function pift_server_send_file_data() {
   // This is one god awful query...  :(
   $files = db_query_range("(SELECT pd.ftid, pd.cid, n.nid AS issue_id, n.title AS issue_title, n.uid, pi.pid, pi.rid, f.filepath AS patch_url, p.title AS project, u.name AS submitter$select FROM {pift_data} pd INNER JOIN {project_issues} pi ON pd.nid = pi.nid INNER JOIN {files} f ON pd.fid = f.fid INNER JOIN {node} n ON n.nid = pi.nid INNER JOIN {node} p ON p.nid = pi.pid INNER JOIN {users} u ON u.uid = pd.uid$join WHERE ((pd.status = %d AND pd.timestamp < %d) OR (pd.status = %d AND pd.timestamp < %d)) AND pd.cid = %d$where) UNION (SELECT pd.ftid, pd.cid, n.nid AS issue_id, n.title AS issue_title, n.uid, pi.pid, pi.rid, cu.filepath AS patch_url, p.title AS project, u.name AS submitter$select FROM {pift_data} pd INNER JOIN {project_issues} pi ON pd.nid = pi.nid INNER JOIN {comment_upload_files} cu ON pd.fid = cu.fid INNER JOIN {node} n ON n.nid = pi.nid INNER JOIN {node} p ON p.nid = pi.pid INNER JOIN {users} u ON u.uid = pd.uid$join WHERE ((pd.status = %d AND pd.timestamp < %d) OR (pd.status = %d AND pd.timestamp < %d)) AND pd.cid <> %d$where) ORDER BY ftid", $args, 0, PIFT_SEND_LIMIT);
 
-  // Nothing to do.
-  if (!db_num_rows($files)) {
-    return;
-  }
-
   // Set up the batching variables.
   $bid = 0;
   $batches = array();
@@ -785,7 +819,7 @@ function pift_server_send_file_data() {
         $batch_total = 0;
       }
       // Convert filepath to absolute URL.
-      $file['patch_url'] = url($file['patch_url'], NULL, NULL, TRUE);
+      $file['patch_url'] = url($file['patch_url'], array('absolute' => TRUE));
       // Add the file to the current batch.
       $batches[$bid][] = $file;
       // Add to the list of files that will be sent with this batch.
@@ -797,6 +831,11 @@ function pift_server_send_file_data() {
     else {
       db_query("UPDATE {pift_data} SET status = %d WHERE ftid = %d", PIFT_NOT_READABLE, $file['ftid']);
     }
+  }
+
+  // Nothing to do.
+  if (empty($batches)) {
+    return;
   }
 
   $sent = array();
@@ -838,7 +877,7 @@ function pift_server_send_file_data() {
 
   // Record successful sends.
   if (!empty($sent)) {
-    watchdog('project_remote', t('Project issue data sent successfully to the following servers:!servers', array('!servers' => theme('item_list', $sent))));
+    watchdog('project_remote', 'Project issue data sent successfully to the following servers:!servers', array('!servers' => theme('item_list', $sent)));
   }
 }
 
@@ -900,13 +939,13 @@ function pift_server_process_test_results($server, $files) {
     }
     // Bad login.
     else {
-      watchdog('project_remote', t('%server attempted to send file test data, and has an invalid server key.', array('%server' => $server['url'])), WATCHDOG_WARNING);
+      watchdog('project_remote', '%server attempted to send file test data, and has an invalid server key.', array('%server' => $server['url']), WATCHDOG_WARNING);
       return array('error' => 'PIFT_XMLRPC_INVALID_SERVER_KEY');
     }
   }
   // Bad test server.
   else {
-    watchdog('project_remote', t('%server attempted to send file test data, and is not on the valid server list.', array('%server' => $server['url'])), WATCHDOG_WARNING);
+    watchdog('project_remote', '%server attempted to send file test data, and is not on the valid server list.', array('%server' => $server['url']), WATCHDOG_WARNING);
     return array('error' => 'PIFT_XMLRPC_INVALID_SERVER');
   }
 }
@@ -989,15 +1028,24 @@ function pift_server_mail_failed_tests($ftids) {
           '!username' => $mail->name,
           '!site' => $site_name,
           '!issue_title' => $mail->title,
-          '!issue_url' => url('node/'. $mail->nid, NULL, $fragment, TRUE),
+          '!issue_url' => url('node/'. $mail->nid, array('fragment' => $fragment, 'absolute' => TRUE)),
           '!date' => format_date(time()),
           '!reason' => $mail->display_data,
-          '!filepath' => url($filepath, NULL, NULL, TRUE),
+          '!filepath' => url($filepath, array('absolute' => TRUE)),
         );
 
         $body = strtr($mail_text, $variables);
         $subject = t('!site Testbed server', array('!site' => $site_name));
-        drupal_mail('pift_failed_test', $mail->mail, $subject, $body);
+//        drupal_mail('pift_failed_test', $mail->mail, $subject, $body);
+        /* TODO Create a hook_mail($key, &$message, $params) function to generate
+        the message body when called by drupal_mail. */
+        $account = array(); // Set this as needed
+        $language = user_preferred_language($account);
+        $object = array(); // Replace this as needed
+        $context['subject'] = $subject;
+        $context['body'] = $body;
+        $params = array('account' => $account, 'object' => $object, 'context' => $context);
+        drupal_mail('pift_server', 'pift_failed_test', $mail->mail, $language, $params);
       }
     }
   }
@@ -1470,10 +1518,10 @@ function pift_server_xmlrpc_error_handler($server, $error_code = NULL) {
 
   switch ($error_code) {
     case PIFR_RESPONSE_INVALID_SERVER:
-      watchdog('project_remote', t('Unable to log in %url to %xmlrpc_url -- invalid server key.', $t_args), WATCHDOG_ERROR);
+      watchdog('project_remote', 'Unable to log in %url to %xmlrpc_url -- invalid server key.', $t_args, WATCHDOG_ERROR);
       break;
     default:
-      watchdog('project_remote', t('XML-RPC error communicating with %xmlrpc_url', $t_args), WATCHDOG_ERROR);
+      watchdog('project_remote', 'XML-RPC error communicating with %xmlrpc_url', $t_args, WATCHDOG_ERROR);
       break;
   }
 }
