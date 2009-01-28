@@ -45,8 +45,7 @@ function pift_server_add_files_update_1() {
 
     // Put the file data into the send queue.
     if (preg_match($_SESSION['file_regex'], $file->filename) && file_exists($file->filepath)) {
-      $ftid = db_next_id('{pift_data}_ftid');
-      $ret[] = update_sql("INSERT INTO {pift_data} (ftid, fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, %d, '%s', %d, %d)", $ftid, $file->fid, $file->nid, 0, $file->uid, '', PIFT_UNTESTED, 0);
+      $ret[] = update_sql("INSERT INTO {pift_data} (fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, '%s', %d, %d)", $file->fid, $file->nid, 0, $file->uid, '', PIFT_UNTESTED, 0);
     }
 
     $_SESSION['pift_server_add_files_update_1']++;
@@ -88,8 +87,7 @@ function pift_server_add_files_update_2() {
 
     // Put the file data into the send queue.
     if (preg_match($_SESSION['file_regex'], $file->filename) && file_exists($file->filepath)) {
-      $ftid = db_next_id('{pift_data}_ftid');
-      $ret[] = update_sql("INSERT INTO {pift_data} (ftid, fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, %d, '%s', %d, %d)", $ftid, $file->fid, $file->nid, $file->cid, $file->uid, '', PIFT_UNTESTED, 0);
+      $ret[] = update_sql("INSERT INTO {pift_data} (fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, '%s', %d, %d)", $file->fid, $file->nid, $file->cid, $file->uid, '', PIFT_UNTESTED, 0);
     }
 
     $_SESSION['pift_server_add_files_update_2']++;
@@ -166,7 +164,7 @@ function update_selection_page() {
   return $output;
 }
 
-function update_script_selection_form() {
+function update_script_selection_form(&$form_state) {
   $form = array();
 
   // Issue file settings.
@@ -403,10 +401,10 @@ function update_finished_page($success) {
 
   // Report end result
   if ($success) {
-    $output = '<p>Updates were attempted. If you see no failures below, you should remove pift_server_add_files.php from your Drupal root directory. Otherwise, you may need to update your database manually. All errors have been <a href="index.php?q=admin/logs/watchdog">logged</a>.</p>';
+    $output = '<p>Updates were attempted. If you see no failures below, you should remove pift_server_add_files.php from your Drupal root directory. Otherwise, you may need to update your database manually. All errors have been <a href="index.php?q=admin/reports/watchdog">logged</a>.</p>';
   }
   else {
-    $output = '<p class="error">The update process was aborted prematurely. All other errors have been <a href="index.php?q=admin/logs/watchdog">logged</a>. You may need to check the <code>watchdog</code> database table manually.</p>';
+    $output = '<p class="error">The update process was aborted prematurely. All other errors have been <a href="index.php?q=admin/reports/watchdog">logged</a>. You may need to check the <code>watchdog</code> database table manually.</p>';
     $output .= '<p class="error">This has most likely occurred because the Project issue file test module or the Project/Project issue modules are not <a href="index.php?q=admin/build/modules">properly installed</a>.</p>';
   }
 
