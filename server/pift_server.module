@@ -79,17 +79,19 @@ function pift_server_form_alter(&$form, &$form_state, $form_id) {
   global $user;
   switch ($form_id) {
     case 'project_issue_subscribe':
-      // TODO: Would be nice to have this at the top of the form,
-      // but the theming function for the form always puts it at
-      // the bottom...  :(
-      $form['pift_server_failed_test_mail_subscribe'] = array(
-        '#type' => 'checkbox',
-        '#title' => t('Receive notification of failed patch tests.'),
-        '#default_value' => db_result(db_query("SELECT uid FROM {pift_subscriptions} WHERE uid = %d", $user->uid)),
-        '#description' => t('Check here to receive e-mail notification when one of your posted patches fails regression testing.'),
-        '#weight' => -10,
-      );
-      $form['#submit'][] = 'pift_server_failed_test_mail_subscribe_submit';
+      if (variable_get('pift_failed_test_mail_text', '')) {
+        // TODO: Would be nice to have this at the top of the form,
+        // but the theming function for the form always puts it at
+        // the bottom...  :(
+        $form['pift_server_failed_test_mail_subscribe'] = array(
+          '#type' => 'checkbox',
+          '#title' => t('Receive notification of failed patch tests.'),
+          '#default_value' => db_result(db_query("SELECT uid FROM {pift_subscriptions} WHERE uid = %d", $user->uid)),
+          '#description' => t('Check here to receive e-mail notification when one of your posted patches fails regression testing.'),
+          '#weight' => -10,
+        );
+        $form['#submit'][] = 'pift_server_failed_test_mail_subscribe_submit';
+      }
       break;
     case 'comment_form':
       $node = node_load($form['nid']['#value']);
