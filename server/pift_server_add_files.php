@@ -33,19 +33,19 @@ function pift_server_add_files_update_1() {
   // Multi-part update
   if (!isset($_SESSION['pift_server_add_files_update_1'])) {
     $_SESSION['pift_server_add_files_update_1'] = 0;
-    $_SESSION['pift_server_add_files_update_1_max'] = db_result(db_query("SELECT COUNT(*) FROM {node} n INNER JOIN {files} f ON n.nid = f.nid WHERE n.type = 'project_issue' AND f.fid >= %d AND f.fid <= %d AND f.filepath <> ''", $_SESSION['first_issue_fid'], $_SESSION['last_issue_fid']));
+    $_SESSION['pift_server_add_files_update_1_max'] = db_result(db_query("SELECT COUNT(*) FROM {node} n INNER JOIN {upload} u ON n.nid = u.nid INNER JOIN {files} f ON u.fid = f.fid WHERE n.type = 'project_issue' AND f.fid >= %d AND f.fid <= %d AND f.filepath <> ''", $_SESSION['first_issue_fid'], $_SESSION['last_issue_fid']));
   }
 
   $ret = array();
 
   // Pull all new issue data. Limit the results to 5 times the PIFT_SEND_LIMIT for consistency.
-  $issue_files = db_query_range("SELECT n.nid, n.uid, f.fid, f.filename, f.filepath FROM {node} n INNER JOIN {files} f ON n.nid = f.nid WHERE n.type = 'project_issue' AND f.fid >= %d AND f.fid <= %d AND f.filepath <> '' ORDER BY n.nid, f.fid", $_SESSION['first_issue_fid'], $_SESSION['last_issue_fid'], $_SESSION['pift_server_add_files_update_1'], $limit);
+  $issue_files = db_query_range("SELECT n.nid, n.uid, f.fid, f.filename, f.filepath FROM {node} n INNER JOIN {upload} u ON n.nid = u.nid INNER JOIN {files} f ON u.fid = f.fid WHERE n.type = 'project_issue' AND f.fid >= %d AND f.fid <= %d AND f.filepath <> '' ORDER BY n.nid, f.fid", $_SESSION['first_issue_fid'], $_SESSION['last_issue_fid'], $_SESSION['pift_server_add_files_update_1'], $limit);
 
   while ($file = db_fetch_object($issue_files)) {
 
     // Put the file data into the send queue.
     if (preg_match($_SESSION['file_regex'], $file->filename) && file_exists($file->filepath)) {
-      $ret[] = update_sql("INSERT INTO {pift_data} (fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, '%s', %d, %d)", $file->fid, $file->nid, 0, $file->uid, '', PIFT_UNTESTED, 0);
+      $ret[] = pift_update_sql("INSERT INTO {pift_data} (fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, '%s', %d, %d)", $file->fid, $file->nid, 0, $file->uid, '', PIFT_UNTESTED, 0);
     }
 
     $_SESSION['pift_server_add_files_update_1']++;
@@ -54,8 +54,6 @@ function pift_server_add_files_update_1() {
   if ($_SESSION['pift_server_add_files_update_1'] >= $_SESSION['pift_server_add_files_update_1_max']) {
     unset($_SESSION['pift_server_add_files_update_1']);
     unset($_SESSION['pift_server_add_files_update_1_max']);
-    unset($_SESSION['first_issue_fid']);
-    unset($_SESSION['last_issue_fid']);
     return $ret;
   }
 
@@ -75,19 +73,19 @@ function pift_server_add_files_update_2() {
   // Multi-part update
   if (!isset($_SESSION['pift_server_add_files_update_2'])) {
     $_SESSION['pift_server_add_files_update_2'] = 0;
-    $_SESSION['pift_server_add_files_update_2_max'] = db_result(db_query("SELECT COUNT(*) FROM {node} n INNER JOIN {comments} c ON n.nid = c.nid INNER JOIN {comment_upload_files} cu ON c.cid = cu.cid WHERE n.type = 'project_issue' AND cu.fid >= %d AND cu.fid <= %d AND cu.filepath <> ''", $_SESSION['first_followup_fid'], $_SESSION['last_followup_fid']));
+    $_SESSION['pift_server_add_files_update_2_max'] = db_result(db_query("SELECT COUNT(*) FROM {node} n INNER JOIN {comments} c ON n.nid = c.nid INNER JOIN {comment_upload} cu ON c.cid = cu.cid INNER JOIN {files} f ON cu.fid = f.fid WHERE n.type = 'project_issue' AND f.fid >= %d AND f.fid <= %d AND f.filepath <> ''", $_SESSION['first_issue_fid'], $_SESSION['last_issue_fid']));
   }
 
   $ret = array();
 
   // Pull all new followup file data. Limit the results to 5 times the PIFT_SEND_LIMIT for consistency.
-  $followup_files = db_query_range("SELECT n.nid, c.cid, c.uid, cu.fid, cu.filename, cu.filepath FROM {node} n INNER JOIN {comments} c ON n.nid = c.nid INNER JOIN {comment_upload_files} cu ON c.cid = cu.cid WHERE n.type = 'project_issue' AND cu.fid >= %d AND cu.fid <= %d AND cu.filepath <> '' ORDER BY c.cid, cu.fid", $_SESSION['first_followup_fid'], $_SESSION['last_followup_fid'], $_SESSION['pift_server_add_files_update_2'], $limit);
+  $followup_files = db_query_range("SELECT n.nid, c.cid, c.uid, f.fid, f.filename, f.filepath FROM {node} n INNER JOIN {comments} c ON n.nid = c.nid INNER JOIN {comment_upload} cu ON c.cid = cu.cid INNER JOIN {files} f ON cu.fid = f.fid WHERE n.type = 'project_issue' AND f.fid >= %d AND f.fid <= %d AND f.filepath <> '' ORDER BY c.cid, f.fid", $_SESSION['first_issue_fid'], $_SESSION['last_issue_fid'], $_SESSION['pift_server_add_files_update_2'], $limit);
 
   while ($file = db_fetch_object($followup_files)) {
 
     // Put the file data into the send queue.
     if (preg_match($_SESSION['file_regex'], $file->filename) && file_exists($file->filepath)) {
-      $ret[] = update_sql("INSERT INTO {pift_data} (fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, '%s', %d, %d)", $file->fid, $file->nid, $file->cid, $file->uid, '', PIFT_UNTESTED, 0);
+      $ret[] = pift_update_sql("INSERT INTO {pift_data} (fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, '%s', %d, %d)", $file->fid, $file->nid, $file->cid, $file->uid, '', PIFT_UNTESTED, 0);
     }
 
     $_SESSION['pift_server_add_files_update_2']++;
@@ -96,8 +94,8 @@ function pift_server_add_files_update_2() {
   if ($_SESSION['pift_server_add_files_update_2'] >= $_SESSION['pift_server_add_files_update_2_max']) {
     unset($_SESSION['pift_server_add_files_update_2']);
     unset($_SESSION['pift_server_add_files_update_2_max']);
-    unset($_SESSION['first_followup_fid']);
-    unset($_SESSION['last_followup_fid']);
+    unset($_SESSION['first_issue_fid']);
+    unset($_SESSION['last_issue_fid']);
     unset($_SESSION['file_regex']);
     return $ret;
   }
@@ -106,7 +104,7 @@ function pift_server_add_files_update_2() {
   return $ret;
 }
 
-function update_sql() {
+function pift_update_sql() {
   $args = func_get_args();
   $sql = array_shift($args);
   $result = db_query($sql, $args);
@@ -181,20 +179,6 @@ function update_script_selection_form(&$form_state) {
     '#description' => "The file ID for the last issue attachment you wish to add.  All issue file ID's of this value and less will be added to the testing queue. Leave blank to get all issue attachments to the end.",
   );
 
-  // Followup file settings.
-  $form['first_followup_fid'] = array(
-    '#type' => 'textfield',
-    '#title' => 'First followup file ID',
-    '#size' => 15,
-    '#description' => "The file ID for the first followup attachment you wish to add.  All followup file ID's of this value and greater will be added to the testing queue. Leave blank to get all followup attachments from the beginning",
-  );
-  $form['last_followup_fid'] = array(
-    '#type' => 'textfield',
-    '#title' => 'Last followup file ID',
-    '#size' => 15,
-    '#description' => "The file ID for the last followup attachment you wish to add.  All followup file ID's of this value and less will be added to the testing queue. Leave blank to get all followup attachments to the end.",
-  );
-
   // Matching file regex.
   $form['file_regex'] = array(
     '#type' => 'textfield',
@@ -224,8 +208,6 @@ function update_update_page() {
   // Set the default repo.
   $_SESSION['first_issue_fid'] = $_POST['first_issue_fid'] ? (int) $_POST['first_issue_fid'] : 0;
   $_SESSION['last_issue_fid'] = $_POST['last_issue_fid'] ? (int) $_POST['last_issue_fid'] : db_result(db_query("SELECT MAX(fid) FROM {files}"));
-  $_SESSION['first_followup_fid'] = $_POST['first_followup_fid'] ? (int) $_POST['first_followup_fid'] : 0;
-  $_SESSION['last_followup_fid'] = $_POST['last_followup_fid'] ? (int) $_POST['last_followup_fid'] : db_result(db_query("SELECT MAX(fid) FROM {comment_upload_files}"));
   $_SESSION['file_regex'] = $_POST['file_regex'] ? $_POST['file_regex'] : '/.*/';
 
   // Keep track of total number of updates
