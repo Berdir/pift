@@ -10,9 +10,9 @@ function pift_server_schema() {
     'fields' => array(
       'ftid' => array(
         'description' => t('Unique file testing ID.'),
-        'type' => 'int',
+        'type' => 'serial',
+        'unsigned' => TRUE,
         'not null' => TRUE,
-        'default' => 0,
       ),
       'fid' => array(
         'description' => t('Foreign key for {files}.fid'),
@@ -144,4 +144,25 @@ function pift_server_uninstall() {
   }
 
   drupal_set_message(t('The Project issue file test server module was uninstalled successfully.'));
+}
+
+/**
+ * Update the 5.x schema to be consistent with 6.x  This is mostly
+ * minor changes to column properites and indexes/keys -- no new or
+ * changed columns.
+ */
+function pift_server_update_6000() {
+
+  $ret = array();
+  $schema = pift_server_schema();
+  db_drop_primary_key($ret, 'pift_data');
+  db_drop_index($ret, 'pift_data', 'nid');
+  db_drop_index($ret, 'pift_data', 'cid');
+  db_change_field($ret, 'pift_data', 'ftid', 'ftid', $schema['pift_data']['fields']['ftid'], array('primary key' => array('ftid')));
+  db_change_field($ret, 'pift_data', 'fid', 'fid', $schema['pift_data']['fields']['fid']);
+  db_change_field($ret, 'pift_data', 'nid', 'nid', $schema['pift_data']['fields']['nid'], array('indexes' => array('nid' => array('nid'))));
+  db_change_field($ret, 'pift_data', 'cid', 'cid', $schema['pift_data']['fields']['cid'], array('indexes' => array('cid' => array('cid'))));
+  db_change_field($ret, 'pift_data', 'uid', 'uid', $schema['pift_data']['fields']['uid']);
+  db_change_field($ret, 'pift_data', 'status', 'status', $schema['pift_data']['fields']['status']);
+  return $ret;
 }
