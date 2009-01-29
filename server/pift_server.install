@@ -152,17 +152,49 @@ function pift_server_uninstall() {
  * changed columns.
  */
 function pift_server_update_6000() {
-
   $ret = array();
-  $schema = pift_server_schema();
+
+  $schema_fields = array(
+    'ftid' => array(
+      'type' => 'serial',
+      'unsigned' => TRUE,
+      'not null' => TRUE,
+    ),
+    'fid' => array(
+      'type' => 'int',
+      'not null' => TRUE,
+      'default' => 0,
+    ),
+    'nid' => array(
+      'type' => 'int',
+      'not null' => TRUE,
+      'default' => 0,
+    ),
+    'cid' => array(
+      'type' => 'int',
+      'not null' => TRUE,
+      'default' => 0,
+    ),
+    'uid' => array(
+      'type' => 'int',
+      'not null' => TRUE,
+      'default' => 0,
+    ),
+    'status' => array(
+      'type' => 'int',
+      'not null' => TRUE,
+      'default' => 0,
+    ),
+  );
+
   db_drop_primary_key($ret, 'pift_data');
   db_drop_index($ret, 'pift_data', 'nid');
   db_drop_index($ret, 'pift_data', 'cid');
-  db_change_field($ret, 'pift_data', 'ftid', 'ftid', $schema['pift_data']['fields']['ftid'], array('primary key' => array('ftid')));
-  db_change_field($ret, 'pift_data', 'fid', 'fid', $schema['pift_data']['fields']['fid']);
-  db_change_field($ret, 'pift_data', 'nid', 'nid', $schema['pift_data']['fields']['nid'], array('indexes' => array('nid' => array('nid'))));
-  db_change_field($ret, 'pift_data', 'cid', 'cid', $schema['pift_data']['fields']['cid'], array('indexes' => array('cid' => array('cid'))));
-  db_change_field($ret, 'pift_data', 'uid', 'uid', $schema['pift_data']['fields']['uid']);
-  db_change_field($ret, 'pift_data', 'status', 'status', $schema['pift_data']['fields']['status']);
+  db_change_field($ret, 'pift_data', 'ftid', 'ftid', $schema_fields['ftid'], array('primary key' => array('ftid')));
+  db_change_field($ret, 'pift_data', 'fid', 'fid', $schema_fields['fid']);
+  db_change_field($ret, 'pift_data', 'nid', 'nid', $schema_fields['nid'], array('indexes' => array('nid' => array('nid'))));
+  db_change_field($ret, 'pift_data', 'cid', 'cid', $schema_fields['cid'], array('indexes' => array('cid' => array('cid'))));
+  db_change_field($ret, 'pift_data', 'uid', 'uid', $schema_fields['uid']);
+  db_change_field($ret, 'pift_data', 'status', 'status', $schema_fields['status']);
   return $ret;
 }
