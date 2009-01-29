@@ -585,10 +585,7 @@ function pift_server_request_retest_confirm_form($nid, $cid, $ftid) {
 
   if ($file_info) {
     $form = array();
-    $form['file_info'] = array(
-      '#type' => 'value',
-      '#value' => $file_info,
-    );
+    $form['#file_info'] = $file_info;
 
     return confirm_form(
       $form,
@@ -608,7 +605,7 @@ function pift_server_request_retest_confirm_form($nid, $cid, $ftid) {
  * Manually requests patch re-testing.
  */
 function pift_server_request_retest_confirm_form_submit($form, &$form_state) {
-  $file_info = $form_state['values']['file_info'];
+  $file_info = $form['#file_info'];
   // Check issue filters here to provide an intelligent user
   // message to the user if the filters don't pass.
   if (pift_server_check_issue_filters($file_info->nid)) {
@@ -630,7 +627,7 @@ function pift_server_request_retest_confirm_form_submit($form, &$form_state) {
     drupal_set_message(t('%file is not currently eligible for re-testing, and was not submitted.', array('%file' => $file_info->filename)), 'error');
   }
 
-  drupal_goto("node/$file_info->nid");
+  $form_state['redirect'] = "node/$file_info->nid";
 }
 
 /**
