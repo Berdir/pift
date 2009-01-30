@@ -97,7 +97,7 @@ function pift_server_form_alter(&$form, &$form_state, $form_id) {
       $node = node_load($form['nid']['#value']);
       if ($node->type == 'project_issue') {
         // Add in custom description for file testing.
-        if (isset($form['attachments']['wrapper']['new']['upload']) && pift_server_active_project($node->pid)) {
+        if (isset($form['attachments']['wrapper']['new']['upload']) && pift_server_active_project($node->project_issue['pid'])) {
           $description = filter_xss_admin(variable_get('pift_server_file_description', ''));
           $form['attachments']['wrapper']['new']['upload']['#description'] .= $description;
         }
@@ -106,7 +106,7 @@ function pift_server_form_alter(&$form, &$form_state, $form_id) {
     case 'project_issue_node_form':
       // Add in custom description for file testing, test here for the existence of a project,
       // so the description doesn't get added to page 1 of the new issue form.
-      if (isset($form['project_info']['pid']['#default_value']) && isset($form['attachments']['wrapper']['new']['upload']) && pift_server_active_project($form['project_info']['pid']['#default_value'])) {
+      if (isset($form['project_info']['pid']['#value']) && isset($form['attachments']['wrapper']['new']['upload']) && pift_server_active_project($form['project_info']['pid']['#value'])) {
         $description = filter_xss_admin(variable_get('pift_server_file_description', ''));
         $form['attachments']['wrapper']['new']['upload']['#description'] .= $description;
       }
@@ -469,6 +469,9 @@ function pift_server_add_followup_files($files) {
   global $user;
   if (is_array($files)) {
     foreach ($files as $file) {
+      // This blows, but comment_upload now stores files as arrays,
+      // not objects, so cast here.
+      $file = (object) $file;
       // Put the file data into the send queue.
       if (preg_match(PIFT_FILE_REGEX, $file->filename) && file_exists($file->filepath)) {
         db_query("INSERT INTO {pift_data} (fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, '%s', %d, %d)", $file->fid, $file->nid, $file->cid, $user->uid, '', PIFT_UNTESTED, 0);
@@ -567,10 +570,11 @@ function pift_server_debug_file_testing_link($ftid, $status) {
  *   A form array.
  *
  */
-function pift_server_request_retest_confirm_form($nid, $cid, $ftid) {
+function pift_server_request_retest_confirm_form($form_state, $nid, $cid, $ftid) {
 
   // Make sure we have all numeric args.
   $args = func_get_args();
+  array_shift($args);
   foreach ($args as $arg) {
     if (!is_numeric($arg)) {
       drupal_set_message(t('non-numeric argument passed'), 'error');
@@ -1299,10 +1303,13 @@ function pift_server_comment(&$comment, $op) {
       // Debug display.
       $debug_links = variable_get('pift_server_debug_file_testing_link', '');
       if ($debug_links) {
-        $files = _comment_upload_load_files($comment->cid);
+        $files = comment_upload_load_files($comment->cid);
         if (is_array($files)) {
           $debug_test_links = array();
           foreach ($files as $file) {
+            // This blows, but comment_upload now stores files as arrays,
+            // not objects, so cast here.
+            $file = (object) $file;
             if (preg_match(PIFT_FILE_REGEX, $file->filename) && file_exists($file->filepath) && ($ftid = db_result(db_query("SELECT ftid FROM {pift_data} WHERE nid = %d AND cid = %d AND fid = %d", $file->nid, $file->cid, $file->fid)))) {
               $file->ftid = $ftid;
               $debug_test_links[] = pift_server_build_file_testing_links($file);
@@ -1316,7 +1323,7 @@ function pift_server_comment(&$comment, $op) {
       break;
     case 'insert':
       // Add attachments to this comment to the send queue.
-      $files = _comment_upload_load_files($comment['cid']);
+      $files = comment_upload_load_files($comment['cid']);
       pift_server_add_followup_files($files);
       pift_server_check_followup_metadata($comment);
       break;
@@ -1420,7 +1427,7 @@ function theme_pift_server_results($results, $nid, $cid, $retest) {
 
   // One row for each file test result.
   foreach ($results as $ftid => $result) {
-    $description = $result['description'] ? $result['description'] : $result['filename'];
+    $description = !empty($result['description']) ? $result['description'] : $result['filename'];
     $retest_link = $retest ? ' - '. l(t('Request re-test'), "pift-server-request-retest/$nid/$cid/$ftid") : '';
     switch ($result['status']) {
       // File passed testing.

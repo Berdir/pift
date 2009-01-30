@@ -1,14 +1,6 @@
 <?php
 // $Id$
 
-// File testing status definitions.
-define('PIFT_PASSED', 1);
-define('PIFT_FAILED', 2);
-
-// PIFR file test responses.
-define('PIFR_RESPONSE_ACCEPTED', 1);
-define('PIFR_RESPONSE_INVALID_SERVER', 2);
-
 /**
  * Implementation of hook_help().
  */
