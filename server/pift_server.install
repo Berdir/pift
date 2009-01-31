@@ -65,21 +65,6 @@ function pift_server_schema() {
     ),
   );
 
-  $schema['pift_subscriptions'] = array(
-    'description' => t('Tracks user subscriptions to file test result emails.'),
-    'fields' => array(
-      'uid' => array(
-        'description' => t('Foreign key for {users}.uid'),
-        'type' => 'int',
-        'not null' => TRUE,
-        'default' => 0,
-      ),
-    ),
-    'unique keys' => array(
-      'uid' => array('uid'),
-    ),
-  );
-
   return $schema;
 }
 
@@ -124,7 +109,6 @@ function pift_server_uninstall() {
     'pift_server_sites',
     'pift_server_send_frequency',
     'pift_server_last_sent',
-    'pift_failed_test_mail_text',
     'pift_next_test_server',
     'pift_server_file_description',
     'pift_send_limit',
@@ -196,5 +180,15 @@ function pift_server_update_6000() {
   db_change_field($ret, 'pift_data', 'cid', 'cid', $schema_fields['cid'], array('indexes' => array('cid' => array('cid'))));
   db_change_field($ret, 'pift_data', 'uid', 'uid', $schema_fields['uid']);
   db_change_field($ret, 'pift_data', 'status', 'status', $schema_fields['status']);
+  return $ret;
+}
+
+/**
+ * Remove {pift_subscriptions} and mailing variable.
+ */
+function pift_server_update_6001() {
+  $ret = array();
+  variable_del('pift_failed_test_mail_text');
+  db_drop_table($ret, 'pift_subscriptions');
   return $ret;
 }

@@ -1,30 +1,6 @@
 <?php
 // $Id$
 
-/* TODO New hook_mail implementation
-   Because of changes to drupal_mail function, you need to move the variables
-   setup and string replace commands into the hook_mail implementation and then
-   call drupal_mail with the name of the module which contains this
-   implementation, the mailkey, the recipient, the language of the user the mail
-   goes to and some arbitrary parameters. */
-
-
-/* TODO Check node access before emailing content
-   Modules like Organic Groups and Project Issue send the same content as an
-   email notifications to many users. They should now be using the new 3rd
-   parameter to node_access() to check access on the content before emailing it.
-   Note that db_rewrite_sql() provodes no protection because the recipient is not
-   the logged in user who is receiving the content. */
-
-
-/* TODO New user_mail_tokens() method may be useful.
-   user.module now provides a user_mail_tokens() function to return an array
-   of the tokens available for the email notification messages it sends when
-   accounts are created, activated, blocked, etc. Contributed modules that
-   wish to make use of the same tokens for their own needs are encouraged
-   to use this function. */
-
-
 /**
  * Advanced settings section
  */
@@ -78,21 +54,6 @@ function pift_server_cron() {
 function pift_server_form_alter(&$form, &$form_state, $form_id) {
   global $user;
   switch ($form_id) {
-    case 'project_issue_subscribe':
-      if (variable_get('pift_failed_test_mail_text', '')) {
-        // TODO: Would be nice to have this at the top of the form,
-        // but the theming function for the form always puts it at
-        // the bottom...  :(
-        $form['pift_server_failed_test_mail_subscribe'] = array(
-          '#type' => 'checkbox',
-          '#title' => t('Receive notification of failed patch tests.'),
-          '#default_value' => db_result(db_query("SELECT uid FROM {pift_subscriptions} WHERE uid = %d", $user->uid)),
-          '#description' => t('Check here to receive e-mail notification when one of your posted patches fails regression testing.'),
-          '#weight' => -10,
-        );
-        $form['#submit'][] = 'pift_server_failed_test_mail_subscribe_submit';
-      }
-      break;
     case 'comment_form':
       $node = node_load($form['nid']['#value']);
       if ($node->type == 'project_issue') {
@@ -140,23 +101,6 @@ function pift_server_theme() {
       ),
     ),
   );
-}
-
-/**
- * Submits the pift subscription setting for the current user.
- */
-function pift_server_failed_test_mail_subscribe_submit($form, &$form_state) {
-  global $user;
-  // Only insert a row if the checkbox is newly checked.
-  if ($form_state['values']['pift_server_failed_test_mail_subscribe']) {
-    if (!db_result(db_query("SELECT uid FROM {pift_subscriptions} WHERE uid = %d", $user->uid))) {
-      db_query("INSERT INTO {pift_subscriptions} (uid) VALUES (%d)", $user->uid);
-    }
-  }
-  // Always remove if not checked.
-  else {
-    db_query("DELETE FROM {pift_subscriptions} WHERE uid = %d", $user->uid);
-  }
 }
 
 /**
@@ -221,13 +165,6 @@ function pift_server_settings_form() {
     '#title' => t('Additional file description'),
     '#default_value' => variable_get('pift_server_file_description', ''),
     '#description' => t("Add text to the description of project issue file upload fields. Can by used to add clarification of files types, etc."),
-  );
-
-  $form['pift_failed_test_mail_text'] = array(
-    '#type' => 'textarea',
-    '#title' => t('Failed test e-mail'),
-    '#default_value' => variable_get('pift_failed_test_mail_text', ''),
-    '#description' => t("If a patch fails testing, and the user who wrote the patch is subscribed to receive notifications of test failures, an e-mail will be sent. Enter the body of the e-mail message above. Available tokens for the e-mail include: <em>!username, !site, !issue_title, !issue_url, !date, !reason, !filepath</em>. Leave blank to disable e-mail notifications."),
   );
 
   $form['pift_server_debug_file_testing_link'] = array(
@@ -991,68 +928,6 @@ function pift_server_process_files($files) {
 }
 
 /**
- * E-mails subscribed users when their file fails regression testing.
- *
- * @param $ftids
- *   An array of file test ID's to check for failure.
- */
-function pift_server_mail_failed_tests($ftids) {
-  // E-mail functionality is disabled.
-  if (!($mail_text = variable_get('pift_failed_test_mail_text', ''))) {
-    return;
-  }
-
-  // Filter out bad/risky data.
-  $ftids = array_filter($ftids, 'is_numeric');
-  if (!empty($ftids)) {
-    $site_name = variable_get('site_name', 'Drupal');
-
-    // Pull only the file data for files that have failed, and that
-    // relate to a use that's subscribe to receive test failure emails.
-    $issue_emails = db_query("SELECT u.name, u.mail, n.title, pd.fid, pd.nid, pd.cid, pd.display_data FROM {pift_data} pd INNER JOIN {node} n ON n.nid = pd.nid INNER JOIN {pift_subscriptions} ps ON pd.uid = ps.uid INNER JOIN {users} u ON u.uid = pd.uid WHERE n.status = 1 AND u.status = 1 AND pd.ftid IN (". implode(', ', $ftids) .") AND pd.status = %d", PIFT_FAILED);
-
-    while ($mail = db_fetch_object($issue_emails)) {
-
-      // Pull the filepath here, since we can't get it from the query above --
-      // it could be coming from two different places. Send user directly to
-      // the comment if the file was attached to a comment.
-      if ($mail->cid) {
-        $fragment = "comment-$mail->cid";
-      }
-      else {
-        $fragment = NULL;
-      }
-      $filepath = db_result(db_query("SELECT filepath FROM {files} WHERE fid = %d", $mail->fid));
-
-      if (is_readable($filepath)) {
-        $variables = array(
-          '!username' => $mail->name,
-          '!site' => $site_name,
-          '!issue_title' => $mail->title,
-          '!issue_url' => url('node/'. $mail->nid, array('fragment' => $fragment, 'absolute' => TRUE)),
-          '!date' => format_date(time()),
-          '!reason' => $mail->display_data,
-          '!filepath' => url($filepath, array('absolute' => TRUE)),
-        );
-
-        $body = strtr($mail_text, $variables);
-        $subject = t('!site Testbed server', array('!site' => $site_name));
-//        drupal_mail('pift_failed_test', $mail->mail, $subject, $body);
-        /* TODO Create a hook_mail($key, &$message, $params) function to generate
-        the message body when called by drupal_mail. */
-        $account = array(); // Set this as needed
-        $language = user_preferred_language($account);
-        $object = array(); // Replace this as needed
-        $context['subject'] = $subject;
-        $context['body'] = $body;
-        $params = array('account' => $account, 'object' => $object, 'context' => $context);
-        drupal_mail('pift_server', 'pift_failed_test', $mail->mail, $language, $params);
-      }
-    }
-  }
-}
-
-/**
  * Checks an issue to see if it still passes testable file filters.
  *
  * @param $nid
@@ -1244,7 +1119,6 @@ function pift_server_nodeapi(&$node, $op, $arg) {
  */
 function pift_server_user($type, $edit, &$user, $category = NULL) {
   if ($type == 'delete') {
-    db_query("DELETE FROM {pift_subscriptions} WHERE uid = %d", $user->uid);
     db_query("UPDATE {pift_data} SET uid = 0 WHERE uid = %d", $user->uid);
   }
 }
