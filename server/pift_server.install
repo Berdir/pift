@@ -192,3 +192,14 @@ function pift_server_update_6001() {
   db_drop_table($ret, 'pift_subscriptions');
   return $ret;
 }
+
+/**
+ * Re-number the file ID's associate with the 6.x version of comment_upload.
+ */
+function pift_server_update_6002() {
+  $ret = array();
+  $comment_upload = db_fetch_object(db_query_range("SELECT fid, legacy_fid FROM {comment_upload}", 0, 1));
+  $offset = $comment_upload->fid - $comment_upload->legacy_fid;
+  $ret[] = update_sql("UPDATE {pift_data} SET fid = (fid + ". $offset .") WHERE cid <> 0");
+  return $ret;
+}
