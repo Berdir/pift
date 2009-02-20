@@ -924,7 +924,6 @@ function pift_server_process_files($files) {
       }
     }
   }
-  pift_server_mail_failed_tests($ftids);
 }
 
 /**
