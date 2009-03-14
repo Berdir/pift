@@ -1,8 +1,0 @@
-; $Id$
-name = Project issue file test client
-description = Simple test client that mimics PIFR for local testing.
-dependencies[] = project
-dependencies[] = project_issue
-dependencies[] = pift_server
-package = Project
-core = 6.x
