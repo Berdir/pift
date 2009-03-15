@@ -4,7 +4,7 @@
 /**
  * Implementation of hook_schema().
  */
-function pift_server_schema() {
+function pift_schema() {
   $schema['pift_data'] = array(
     'description' => t('Holds data for file testing results.'),
     'fields' => array(
@@ -71,7 +71,7 @@ function pift_server_schema() {
 /**
  * Implementation of hook_install().
  */
-function pift_server_install() {
+function pift_install() {
   // It seems the .module file isn't included yet, so include it manually...
   require_once(drupal_get_path('module', 'pift_server') .'/pift_server.module');
 
@@ -89,7 +89,7 @@ function pift_server_install() {
 
   if (empty($failed) && $set_weight) {
     // Set up the send queue to start with new issues/comments.
-    pift_server_reset_send_queue();
+    pift_reset_send_queue();
     drupal_set_message(t('The Project issue file test server module was installed successfully.'));
   }
   else {
@@ -100,17 +100,17 @@ function pift_server_install() {
 /**
  * Implementation of hook_uninstall().
  */
-function pift_server_uninstall() {
+function pift_uninstall() {
 
   // Remove tables.
   drupal_uninstall_schema('pift_server');
 
   $vars = array(
-    'pift_server_sites',
-    'pift_server_send_frequency',
-    'pift_server_last_sent',
+    'pift_sites',
+    'pift_send_frequency',
+    'pift_last_sent',
     'pift_next_test_server',
-    'pift_server_file_description',
+    'pift_file_description',
     'pift_send_limit',
     'pift_batch_size',
     'pift_file_regex',
@@ -118,9 +118,9 @@ function pift_server_uninstall() {
     'pift_retest_time',
     'pift_test_status',
     'pift_projects',
-    'pift_server_release_tag_regex',
-    'pift_server_debug_file_testing_link',
-    'pift_server_auto_followup_sid',
+    'pift_release_tag_regex',
+    'pift_debug_file_testing_link',
+    'pift_auto_followup_sid',
   );
 
   foreach ($vars as $var) {
@@ -135,7 +135,7 @@ function pift_server_uninstall() {
  * minor changes to column properites and indexes/keys -- no new or
  * changed columns.
  */
-function pift_server_update_6000() {
+function pift_update_6000() {
   $ret = array();
 
   $schema_fields = array(
@@ -186,7 +186,7 @@ function pift_server_update_6000() {
 /**
  * Remove {pift_subscriptions} and mailing variable.
  */
-function pift_server_update_6001() {
+function pift_update_6001() {
   $ret = array();
   variable_del('pift_failed_test_mail_text');
   db_drop_table($ret, 'pift_subscriptions');
@@ -196,7 +196,7 @@ function pift_server_update_6001() {
 /**
  * Re-number the file ID's associate with the 6.x version of comment_upload.
  */
-function pift_server_update_6002() {
+function pift_update_6002() {
   $ret = array();
   $comment_upload = db_fetch_object(db_query_range("SELECT fid, legacy_fid FROM {comment_upload}", 0, 1));
   $offset = $comment_upload->fid - $comment_upload->legacy_fid;

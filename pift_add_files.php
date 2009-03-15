@@ -9,7 +9,7 @@
  *
  * Place this file in the root of your Drupal installation (ie, the same
  * directory as index.php), point your browser to
- * "http://yoursite/pift_server_add_files.php" and follow the
+ * "http://yoursite/pift_add_files.php" and follow the
  * instructions.
  *
  * If you are not logged in as administrator, you will need to modify the access
@@ -24,22 +24,22 @@ $access_check = TRUE;
 /**
  * Add issue files.
  */
-function pift_server_add_files_update_1() {
+function pift_add_files_update_1() {
 
   // This determines how many issue files will be processed in each batch run. A reasonable
   // default has been chosen, but you may want to tweak depending on your setup.
   $limit = 200;
 
   // Multi-part update
-  if (!isset($_SESSION['pift_server_add_files_update_1'])) {
-    $_SESSION['pift_server_add_files_update_1'] = 0;
-    $_SESSION['pift_server_add_files_update_1_max'] = db_result(db_query("SELECT COUNT(*) FROM {node} n INNER JOIN {upload} u ON n.nid = u.nid INNER JOIN {files} f ON u.fid = f.fid WHERE n.type = 'project_issue' AND f.fid >= %d AND f.fid <= %d AND f.filepath <> ''", $_SESSION['first_issue_fid'], $_SESSION['last_issue_fid']));
+  if (!isset($_SESSION['pift_add_files_update_1'])) {
+    $_SESSION['pift_add_files_update_1'] = 0;
+    $_SESSION['pift_add_files_update_1_max'] = db_result(db_query("SELECT COUNT(*) FROM {node} n INNER JOIN {upload} u ON n.nid = u.nid INNER JOIN {files} f ON u.fid = f.fid WHERE n.type = 'project_issue' AND f.fid >= %d AND f.fid <= %d AND f.filepath <> ''", $_SESSION['first_issue_fid'], $_SESSION['last_issue_fid']));
   }
 
   $ret = array();
 
   // Pull all new issue data. Limit the results to 5 times the PIFT_SEND_LIMIT for consistency.
-  $issue_files = db_query_range("SELECT n.nid, n.uid, f.fid, f.filename, f.filepath FROM {node} n INNER JOIN {upload} u ON n.nid = u.nid INNER JOIN {files} f ON u.fid = f.fid WHERE n.type = 'project_issue' AND f.fid >= %d AND f.fid <= %d AND f.filepath <> '' ORDER BY n.nid, f.fid", $_SESSION['first_issue_fid'], $_SESSION['last_issue_fid'], $_SESSION['pift_server_add_files_update_1'], $limit);
+  $issue_files = db_query_range("SELECT n.nid, n.uid, f.fid, f.filename, f.filepath FROM {node} n INNER JOIN {upload} u ON n.nid = u.nid INNER JOIN {files} f ON u.fid = f.fid WHERE n.type = 'project_issue' AND f.fid >= %d AND f.fid <= %d AND f.filepath <> '' ORDER BY n.nid, f.fid", $_SESSION['first_issue_fid'], $_SESSION['last_issue_fid'], $_SESSION['pift_add_files_update_1'], $limit);
 
   while ($file = db_fetch_object($issue_files)) {
 
@@ -48,38 +48,38 @@ function pift_server_add_files_update_1() {
       $ret[] = pift_update_sql("INSERT INTO {pift_data} (fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, '%s', %d, %d)", $file->fid, $file->nid, 0, $file->uid, '', PIFT_UNTESTED, 0);
     }
 
-    $_SESSION['pift_server_add_files_update_1']++;
+    $_SESSION['pift_add_files_update_1']++;
   }
 
-  if ($_SESSION['pift_server_add_files_update_1'] >= $_SESSION['pift_server_add_files_update_1_max']) {
-    unset($_SESSION['pift_server_add_files_update_1']);
-    unset($_SESSION['pift_server_add_files_update_1_max']);
+  if ($_SESSION['pift_add_files_update_1'] >= $_SESSION['pift_add_files_update_1_max']) {
+    unset($_SESSION['pift_add_files_update_1']);
+    unset($_SESSION['pift_add_files_update_1_max']);
     return $ret;
   }
 
-  $ret['#finished'] = $_SESSION['pift_server_add_files_update_1'] / $_SESSION['pift_server_add_files_update_1_max'];
+  $ret['#finished'] = $_SESSION['pift_add_files_update_1'] / $_SESSION['pift_add_files_update_1_max'];
   return $ret;
 }
 
 /**
  * Add followup files.
  */
-function pift_server_add_files_update_2() {
+function pift_add_files_update_2() {
 
   // This determines how many issue files will be processed in each batch run. A reasonable
   // default has been chosen, but you may want to tweak depending on your setup.
   $limit = 200;
 
   // Multi-part update
-  if (!isset($_SESSION['pift_server_add_files_update_2'])) {
-    $_SESSION['pift_server_add_files_update_2'] = 0;
-    $_SESSION['pift_server_add_files_update_2_max'] = db_result(db_query("SELECT COUNT(*) FROM {node} n INNER JOIN {comments} c ON n.nid = c.nid INNER JOIN {comment_upload} cu ON c.cid = cu.cid INNER JOIN {files} f ON cu.fid = f.fid WHERE n.type = 'project_issue' AND f.fid >= %d AND f.fid <= %d AND f.filepath <> ''", $_SESSION['first_issue_fid'], $_SESSION['last_issue_fid']));
+  if (!isset($_SESSION['pift_add_files_update_2'])) {
+    $_SESSION['pift_add_files_update_2'] = 0;
+    $_SESSION['pift_add_files_update_2_max'] = db_result(db_query("SELECT COUNT(*) FROM {node} n INNER JOIN {comments} c ON n.nid = c.nid INNER JOIN {comment_upload} cu ON c.cid = cu.cid INNER JOIN {files} f ON cu.fid = f.fid WHERE n.type = 'project_issue' AND f.fid >= %d AND f.fid <= %d AND f.filepath <> ''", $_SESSION['first_issue_fid'], $_SESSION['last_issue_fid']));
   }
 
   $ret = array();
 
   // Pull all new followup file data. Limit the results to 5 times the PIFT_SEND_LIMIT for consistency.
-  $followup_files = db_query_range("SELECT n.nid, c.cid, c.uid, f.fid, f.filename, f.filepath FROM {node} n INNER JOIN {comments} c ON n.nid = c.nid INNER JOIN {comment_upload} cu ON c.cid = cu.cid INNER JOIN {files} f ON cu.fid = f.fid WHERE n.type = 'project_issue' AND f.fid >= %d AND f.fid <= %d AND f.filepath <> '' ORDER BY c.cid, f.fid", $_SESSION['first_issue_fid'], $_SESSION['last_issue_fid'], $_SESSION['pift_server_add_files_update_2'], $limit);
+  $followup_files = db_query_range("SELECT n.nid, c.cid, c.uid, f.fid, f.filename, f.filepath FROM {node} n INNER JOIN {comments} c ON n.nid = c.nid INNER JOIN {comment_upload} cu ON c.cid = cu.cid INNER JOIN {files} f ON cu.fid = f.fid WHERE n.type = 'project_issue' AND f.fid >= %d AND f.fid <= %d AND f.filepath <> '' ORDER BY c.cid, f.fid", $_SESSION['first_issue_fid'], $_SESSION['last_issue_fid'], $_SESSION['pift_add_files_update_2'], $limit);
 
   while ($file = db_fetch_object($followup_files)) {
 
@@ -88,19 +88,19 @@ function pift_server_add_files_update_2() {
       $ret[] = pift_update_sql("INSERT INTO {pift_data} (fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, '%s', %d, %d)", $file->fid, $file->nid, $file->cid, $file->uid, '', PIFT_UNTESTED, 0);
     }
 
-    $_SESSION['pift_server_add_files_update_2']++;
+    $_SESSION['pift_add_files_update_2']++;
   }
 
-  if ($_SESSION['pift_server_add_files_update_2'] >= $_SESSION['pift_server_add_files_update_2_max']) {
-    unset($_SESSION['pift_server_add_files_update_2']);
-    unset($_SESSION['pift_server_add_files_update_2_max']);
+  if ($_SESSION['pift_add_files_update_2'] >= $_SESSION['pift_add_files_update_2_max']) {
+    unset($_SESSION['pift_add_files_update_2']);
+    unset($_SESSION['pift_add_files_update_2_max']);
     unset($_SESSION['first_issue_fid']);
     unset($_SESSION['last_issue_fid']);
     unset($_SESSION['file_regex']);
     return $ret;
   }
 
-  $ret['#finished'] = $_SESSION['pift_server_add_files_update_2'] / $_SESSION['pift_server_add_files_update_2_max'];
+  $ret['#finished'] = $_SESSION['pift_add_files_update_2'] / $_SESSION['pift_add_files_update_2_max'];
   return $ret;
 }
 
@@ -125,7 +125,7 @@ function pift_update_sql() {
  */
 function update_data($module, $number) {
 
-  $function = "pift_server_add_files_update_$number";
+  $function = "pift_add_files_update_$number";
   $ret = $function();
 
   // Assume the update finished unless the update results indicate otherwise.
@@ -259,7 +259,7 @@ function update_js() {
         var errorCallback = function (pb) {
           var div = document.createElement('p');
           div.className = 'error';
-          $(div).html('An unrecoverable error has occured. You can find the error message below. It is advised to copy it to the clipboard for reference. Please continue to the <a href=\"pift_server_add_files.php?op=error\">update summary</a>');
+          $(div).html('An unrecoverable error has occured. You can find the error message below. It is advised to copy it to the clipboard for reference. Please continue to the <a href=\"pift_add_files.php?op=error\">update summary</a>');
           $(holder).prepend(div);
           $('#wait').hide();
         }
@@ -267,7 +267,7 @@ function update_js() {
         var progress = new Drupal.progressBar('updateprogress', updateCallback, \"POST\", errorCallback);
         progress.setProgress(-1, 'Starting updates');
         $(holder).append(progress.element);
-        progress.startMonitoring('pift_server_add_files.php?op=do_update', 0);
+        progress.startMonitoring('pift_add_files.php?op=do_update', 0);
       });
     });
   }
@@ -343,7 +343,7 @@ function update_progress_page_nojs() {
     // Error handling: if PHP dies, it will output whatever is in the output
     // buffer, followed by the error message.
     ob_start();
-    $fallback = '<p class="error">An unrecoverable error has occurred. You can find the error message below. It is advised to copy it to the clipboard for reference. Please continue to the <a href="pift_server_add_files.php?op=error">update summary</a>.</p>';
+    $fallback = '<p class="error">An unrecoverable error has occurred. You can find the error message below. It is advised to copy it to the clipboard for reference. Please continue to the <a href="pift_add_files.php?op=error">update summary</a>.</p>';
     print theme('maintenance_page', $fallback, FALSE, TRUE);
 
     list($percentage, $message) = update_do_updates();
@@ -366,7 +366,7 @@ function update_progress_page_nojs() {
     $message = 'Starting updates';
   }
 
-  drupal_set_html_head('<meta http-equiv="Refresh" content="0; URL=pift_server_add_files.php?op='. $new_op .'">');
+  drupal_set_html_head('<meta http-equiv="Refresh" content="0; URL=pift_add_files.php?op='. $new_op .'">');
   $output = theme('progress_bar', $percentage, $message);
   $output .= '<p>Updating your site will take a few seconds.</p>';
 
@@ -383,7 +383,7 @@ function update_finished_page($success) {
 
   // Report end result
   if ($success) {
-    $output = '<p>Updates were attempted. If you see no failures below, you should remove pift_server_add_files.php from your Drupal root directory. Otherwise, you may need to update your database manually. All errors have been <a href="index.php?q=admin/reports/watchdog">logged</a>.</p>';
+    $output = '<p>Updates were attempted. If you see no failures below, you should remove pift_add_files.php from your Drupal root directory. Otherwise, you may need to update your database manually. All errors have been <a href="index.php?q=admin/reports/watchdog">logged</a>.</p>';
   }
   else {
     $output = '<p class="error">The update process was aborted prematurely. All other errors have been <a href="index.php?q=admin/reports/watchdog">logged</a>. You may need to check the <code>watchdog</code> database table manually.</p>';
@@ -436,7 +436,7 @@ function update_info_page() {
   $output .= "<li>Use this script to add any Project issue file attachments that were made before the file testing module was installed.</li>";
   $output .= "<li>Before doing anything, backup your database. This process will change your database and its values.</li>\n";
   $output .= "<li>Make sure the Project issue file test, Project, and Project issue modules are <a href=\"index.php?q=admin/build/modules\">properly installed</a>.</li>\n";
-  $output .= "<li>Make sure this file is placed in the root of your Drupal installation (the same directory that index.php is in) and <a href=\"pift_server_add_files.php?op=selection\">run the database upgrade script</a>. <strong>Don't upgrade your database twice as it will cause problems!</strong></li>\n";
+  $output .= "<li>Make sure this file is placed in the root of your Drupal installation (the same directory that index.php is in) and <a href=\"pift_add_files.php?op=selection\">run the database upgrade script</a>. <strong>Don't upgrade your database twice as it will cause problems!</strong></li>\n";
   $output .= "</ol>";
 
   return $output;
@@ -444,11 +444,11 @@ function update_info_page() {
 
 function update_access_denied_page() {
   drupal_set_title('Access denied');
-  return '<p>Access denied. You are not authorized to access this page. Please log in as the admin user (the first user you created). If you cannot log in, you will have to edit <code>pift_server_add_files.php</code> to bypass this access check. To do this:</p>
+  return '<p>Access denied. You are not authorized to access this page. Please log in as the admin user (the first user you created). If you cannot log in, you will have to edit <code>pift_add_files.php</code> to bypass this access check. To do this:</p>
 <ol>
- <li>With a text editor find the pift_server_add_files.php file on your system. It should be in the main Drupal directory that you installed all the files into.</li>
- <li>There is a line near top of pift_server_add_files.php that says <code>$access_check = TRUE;</code>. Change it to <code>$access_check = FALSE;</code>.</li>
- <li>As soon as the update is done, you should remove pift_server_add_files.php from your main installation directory.</li>
+ <li>With a text editor find the pift_add_files.php file on your system. It should be in the main Drupal directory that you installed all the files into.</li>
+ <li>There is a line near top of pift_add_files.php that says <code>$access_check = TRUE;</code>. Change it to <code>$access_check = FALSE;</code>.</li>
+ <li>As soon as the update is done, you should remove pift_add_files.php from your main installation directory.</li>
 </ol>';
 }
 
