@@ -1,6 +1,6 @@
 ; $Id$
-name = Project issue file test server
-description = Configure remote sending/receiving of file test information.
+name = PIFT
+description = Integrates into project to provide an automated testing hub.
 dependencies[] = project
 dependencies[] = project_issue
 package = Project
