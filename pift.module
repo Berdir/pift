@@ -1,31 +1,35 @@
 <?php
 // $Id$
 
-/**
- * Advanced settings section
+/*
+ * Variables loaded as constants.
  */
-// Limit on how many files to send for each cron run.
-define('PIFT_SEND_LIMIT', variable_get('pift_send_limit', 100));
-// Number of files to send in a single call to a test server.
-define('PIFT_BATCH_SIZE', variable_get('pift_batch_size', 20));
-// Regex for determining which file types should be sent for testing.
-define('PIFT_FILE_REGEX', variable_get('pift_file_regex', '/(\.diff|\.patch)$/'));
-// Number of hours to wait before resending an untested file to a test
-// server (ie, the test server never sent back the results).
-define('PIFT_RESEND_TIME', variable_get('pift_resend_time', 2));
-// Number of hours to wait before retesting a previously passes file.
-define('PIFT_RETEST_TIME', variable_get('pift_retest_time', 24));
+define('PIFT_FREQUENCY', variable_get('pift_frequency', -1));
+define('PIFT_KEY', variable_get('pift_key', ''));
+define('PIFT_SERVER', variable_get('pift_server', ''));
+define('PIFT_DESCRIPTION', variable_get('pift_description', ''));
+define('PIFT_FOLLOWUP', variable_get('pift_followup', 'patch (code needs work)'));
+define('PIFT_REGEX', variable_get('pift_regex', '/(\.diff|\.patch)$/'));
+define('PIFT_STATUS', variable_get('pift_status', 'patch (code needs review), patch (ready to commit)'));
+define('PIFT_RETEST', variable_get('pift_retest', 24 * 60 * 60));
 
-// File testing status definitions.
+/*
+ * Test status codes.
+ */
 define('PIFT_UNTESTED', 0);
 define('PIFT_PASSED', 1);
 define('PIFT_FAILED', 2);
 define('PIFT_RETEST', 3);
 define('PIFT_NOT_READABLE', 4);
 
-// PIFR file test responses.
-define('PIFR_RESPONSE_ACCEPTED', 1);
-define('PIFR_RESPONSE_INVALID_SERVER', 2);
+/*
+ * PIFR XML-RPC response codes.
+ */
+if (!defined('PIFR_RESPONSE_ACCEPTED')) {
+  define('PIFR_RESPONSE_ACCEPTED', 1);
+  define('PIFR_RESPONSE_INVALID_SERVER', 2);
+  define('PIFR_RESPONSE_DENIED', 3);
+}
 
 /**
  * Implementation of hook_menu().
@@ -90,6 +94,13 @@ function pift_theme() {
 }
 
 /**
+ * Implementation of hook_init().
+ */
+function pift_init() {
+  drupal_add_css(drupal_get_path('module', 'pift_server') . '/pift.css');
+}
+
+/**
  * Implementation of hook_cron().
  */
 function pift_cron() {
@@ -111,7 +122,7 @@ function pift_cron() {
 }
 
 /**
- * Implementation of hook_form_alter.
+ * Implementation of hook_form_alter().
  */
 function pift_form_alter(&$form, &$form_state, $form_id) {
   global $user;
@@ -135,36 +146,6 @@ function pift_form_alter(&$form, &$form_state, $form_id) {
       }
       break;
   }
-}
-
-/**
- * Validation for numeric textfields.
- */
-function pift_is_numeric_validate($form, &$form_state) {
-  if (!is_numeric($form['#value'])) {
-    form_set_error($form['#name'], t('%title must be a number.', array('%title' => $form['#title'])));
-  }
-}
-
-/**
- * Validation for comma separated numeric textfields.
- */
-function pift_comma_separated_numeric_validate($form, &$form_state) {
-  if ($values = $form['#value']) {
-    $values = explode(',', $values);
-    $values = array_map('trim', $values);
-    foreach ($values as $value) {
-      if (!is_numeric($value)) {
-        form_set_error($form['#name'], t("%title must be a comma separated list of numeric ID's.", array('%title' => $form['#title'])));
-        return;
-      }
-    }
-  }
-}
-
-function pift_init() {
-  // Include the CSS file.
-  drupal_add_css(drupal_get_path('module', 'pift_server') .'/pift.css');
 }
 
 /**

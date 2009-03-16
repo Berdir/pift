@@ -20,27 +20,27 @@ function pift_admin_settings_form() {
   $form['general']['pift_frequency'] = array(
     '#type' => 'select',
     '#title' => t('Send frequency'),
+    '#description' => t('Frequency at which test requests will be sent.'),
     '#options' => array(
       -1 => t('Disabled'),
       0 => t('Cron run'),
       60 => t('Hourly'),
       1440 => t('Daily'),
     ),
-    '#default_value' => variable_get('pift_frequency', -1),
-    '#description' => t('Frequency at which test requests will be sent.'),
+    '#default_value' => PIFT_FREQUENCY,
   );
   $form['general']['pift_key'] = array(
     '#type' => 'textfield',
     '#title' => t('Client key'),
-    '#default_value' => variable_get('pift_key', ''),
     '#description' => t('The key assigned to client.'),
+    '#default_value' => PIFT_KEY,
     '#required' => TRUE,
   );
   $form['general']['pift_server'] = array(
     '#type' => 'textfield',
     '#title' => t('Server URL'),
-    '#default_value' => variable_get('pift_server', ''),
     '#description' => t('The URL of the test server, include ending forward slash.'),
+    '#default_value' => PIFT_SERVER,
     '#required' => TRUE,
   );
 
@@ -53,8 +53,8 @@ function pift_admin_settings_form() {
   $form['interface']['pift_description'] = array(
     '#type' => 'textarea',
     '#title' => t('File description'),
-    '#default_value' => variable_get('pift_description', ''),
     '#description' => t('Additional text to be displayed on the project issue attachment fieldset.'),
+    '#default_value' => PIFT_DESCRIPTION,
   );
   $criteria = array(
     t('The file has failed testing.'),
@@ -65,7 +65,7 @@ function pift_admin_settings_form() {
     '#type' => 'textfield',
     '#title' => t('Followup issue status'),
     '#description' => t('The status to set an issue to when a test result meets any of the following criteria.' . theme('item_list', $criteria)),
-    '#default_value' => variable_get('pift_followup', 'patch (code needs work)'),
+    '#default_value' => PIFT_FOLLOWUP,
     '#element_validate' => array('pifr_admin_settings_form_validate_status'),
     '#autocomplete_path' => 'admin/project/pift/status',
   );
@@ -80,14 +80,14 @@ function pift_admin_settings_form() {
     '#type' => 'textfield',
     '#title' => t('File regex'),
     '#description' => t('Full regex pattern that must be matched for files to be tested.'),
+    '#default_value' => PIFT_REGEX,
     '#required' => TRUE,
-    '#default_value' => variable_get('pift_regex', '/(\.diff|\.patch)$/'),
   );
   $form['criteria']['pift_status'] = array(
     '#type' => 'textfield',
     '#title' => t('Issue statuses'),
     '#description' => t('List of issue status that an issue must be set to in order to test files.'),
-    '#default_value' => variable_get('pift_status', 'patch (code needs review), patch (ready to commit)'),
+    '#default_value' => PIFT_STATUS,
     '#element_validate' => array('pifr_admin_settings_form_validate_status'),
     '#autocomplete_path' => 'admin/project/pift/status',
   );
@@ -95,8 +95,7 @@ function pift_admin_settings_form() {
     '#type' => 'select',
     '#title' => t('Re-test interval'),
     '#description' => t('Number of days to wait before re-testing a previously passed file, or -1 to prevent re-testing.'),
-    '#required' => TRUE,
-    '#default_value' => variable_get('pift_retest_time', 24),
+    '#default_value' => PIFT_RETEST,
     '#options' => array(
       24 * 60 * 60,
       48 * 60 * 60,
@@ -104,6 +103,7 @@ function pift_admin_settings_form() {
       96 * 60 * 60,
     ),
     '#element_validate' => array('pift_is_numeric_validate'),
+    '#required' => TRUE,
   );
   $form['criteria']['pift_retest']['#options'] = drupal_map_assoc($form['criteria']['pift_retest']['#options'], 'format_interval');
 
