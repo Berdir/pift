@@ -96,21 +96,14 @@ function pift_uninstall() {
   drupal_uninstall_schema('pift');
 
   $vars = array(
-    'pift_sites',
-    'pift_send_frequency',
-    'pift_last_sent',
-    'pift_next_test_server',
-    'pift_file_description',
-    'pift_send_limit',
-    'pift_batch_size',
-    'pift_file_regex',
-    'pift_resend_time',
-    'pift_retest_time',
-    'pift_test_status',
-    'pift_projects',
-    'pift_release_tag_regex',
-    'pift_debug_file_testing_link',
-    'pift_auto_followup_sid',
+    'pift_frequency',
+    'pift_key',
+    'pift_server',
+    'pift_description',
+    'pift_followup',
+    'pift_regex',
+    'pift_status',
+    'pift_retest',
   );
 
   foreach ($vars as $var) {

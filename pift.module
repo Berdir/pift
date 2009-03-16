@@ -37,7 +37,14 @@ function pift_menu() {
     'title' => 'PIFT settings',
     'description' => 'Configure PIFT.',
     'page callback' => 'drupal_get_form',
-    'page arguments' => array('pift_settings_form'),
+    'page arguments' => array('pift_admin_settings_form'),
+    'access arguments' => array('administer projects'),
+    'file' => 'pift.admin.inc',
+  );
+  $items['admin/project/pift/status/%'] = array(
+    'title' => 'AHAH status',
+    'page callback' => 'pift_admin_status',
+    'page arguments' => array(4),
     'access arguments' => array('administer projects'),
     'file' => 'pift.admin.inc',
   );
@@ -1246,15 +1253,4 @@ function pift_status_list() {
   else {
     return array();
   }
-}
-
-/**
- * Generates the XML-RPC server key.
- *
- * @return
- *   The server key.
- */
-function pift_server_key() {
-  global $base_url;
-  return md5(drupal_get_private_key() . $base_url);
 }
