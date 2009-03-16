@@ -5,64 +5,74 @@
  * Implementation of hook_schema().
  */
 function pift_schema() {
-  $schema['pift_data'] = array(
-    'description' => t('Holds data for file testing results.'),
+  $schema['pift_test'] = array(
+    'description' => t('Stores test results.'),
     'fields' => array(
-      'ftid' => array(
-        'description' => t('Unique file testing ID.'),
+      'pift_test_id' => array(
+        'description' => t('Unique test ID.'),
         'type' => 'serial',
         'unsigned' => TRUE,
         'not null' => TRUE,
       ),
-      'fid' => array(
-        'description' => t('Foreign key for {files}.fid'),
+      'status' => array(
+        'description' => t('Status of the test.'),
         'type' => 'int',
         'not null' => TRUE,
         'default' => 0,
       ),
-      'nid' => array(
-        'description' => t('The issue node ID as in {node}.nid'),
-        'type' => 'int',
-        'not null' => TRUE,
-        'default' => 0,
-      ),
-      'cid' => array(
-        'description' => t('Foreign key for {comments}.cid'),
-        'type' => 'int',
-        'not null' => TRUE,
-        'default' => 0,
-      ),
-      'uid' => array(
-        'description' => t('Foreign key for {users}.uid'),
-        'type' => 'int',
-        'not null' => TRUE,
-        'default' => 0,
-      ),
-      'display_data' => array(
-        'description' => t('The result data to display.'),
+      'message' => array(
+        'description' => t('Summary message of test result.'),
         'type' => 'text',
         'size' => 'big',
         'not null' => TRUE,
       ),
-      'status' => array(
-        'description' => t('The testing status of the file.'),
-        'type' => 'int',
-        'not null' => TRUE,
-        'default' => 0,
-      ),
-      'timestamp' => array(
-        'description' => t('Unix timestamp for the last time the file was updated.'),
+      'last_tested' => array(
+        'description' => t('Timestamp of last time tested.'),
         'type' => 'int',
         'not null' => TRUE,
         'default' => 0,
       ),
     ),
-    'primary key' => array('ftid'),
+    'primary key' => array('pift_test_id'),
     'indexes' => array(
-      'nid' => array('nid'),
-      'cid' => array('cid'),
-      'timestamp' => array('timestamp'),
+      'status' => array('status'),
+      'last_tested' => array('last_tested'),
     ),
+  );
+  $schema['pift_file'] = array(
+    'description' => t('Relates files to tests.'),
+    'fields' => array(
+      'fid' => array(
+        'description' => t('Reference to file ID.'),
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'test_id' => array(
+        'description' => t('Reference to test ID.'),
+        'type' => 'int',
+        'not null' => TRUE,
+      ),
+    ),
+    'primary key' => array('fid', 'test_id'),
+  );
+  $schema['pift_release'] = array(
+    'description' => t('Relates releases to tests.'),
+    'fields' => array(
+      'nid' => array(
+        'description' => t('Reference to release NID.'),
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'test_id' => array(
+        'description' => t('Reference to test ID.'),
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'primary key' => array('nid', 'test_id'),
   );
 
   return $schema;
@@ -72,38 +82,18 @@ function pift_schema() {
  * Implementation of hook_install().
  */
 function pift_install() {
-  // It seems the .module file isn't included yet, so include it manually...
-  require_once(drupal_get_path('module', 'pift_server') .'/pift_server.module');
-
   // Create tables.
-  $ret = drupal_install_schema('pift_server');
+  drupal_install_schema('pift');
 
-  $failed = array();
-  foreach ($ret as $query) {
-    if (!$query['success']) {
-      $failed[] = $query['query'];
-    }
-  }
-
-  $set_weight = db_query("UPDATE {system} SET weight = 3 WHERE  name = 'pift_server'");
-
-  if (empty($failed) && $set_weight) {
-    // Set up the send queue to start with new issues/comments.
-    pift_reset_send_queue();
-    drupal_set_message(t('The Project issue file test server module was installed successfully.'));
-  }
-  else {
-    drupal_set_message(t('There was an error installing the Project issue file test server module tables.'));
-  }
+  db_query("UPDATE {system} SET weight = 3 WHERE  name = 'pift'");
 }
 
 /**
  * Implementation of hook_uninstall().
  */
 function pift_uninstall() {
-
   // Remove tables.
-  drupal_uninstall_schema('pift_server');
+  drupal_uninstall_schema('pift');
 
   $vars = array(
     'pift_sites',
@@ -126,80 +116,4 @@ function pift_uninstall() {
   foreach ($vars as $var) {
     variable_del($var);
   }
-
-  drupal_set_message(t('The Project issue file test server module was uninstalled successfully.'));
-}
-
-/**
- * Update the 5.x schema to be consistent with 6.x  This is mostly
- * minor changes to column properites and indexes/keys -- no new or
- * changed columns.
- */
-function pift_update_6000() {
-  $ret = array();
-
-  $schema_fields = array(
-    'ftid' => array(
-      'type' => 'serial',
-      'unsigned' => TRUE,
-      'not null' => TRUE,
-    ),
-    'fid' => array(
-      'type' => 'int',
-      'not null' => TRUE,
-      'default' => 0,
-    ),
-    'nid' => array(
-      'type' => 'int',
-      'not null' => TRUE,
-      'default' => 0,
-    ),
-    'cid' => array(
-      'type' => 'int',
-      'not null' => TRUE,
-      'default' => 0,
-    ),
-    'uid' => array(
-      'type' => 'int',
-      'not null' => TRUE,
-      'default' => 0,
-    ),
-    'status' => array(
-      'type' => 'int',
-      'not null' => TRUE,
-      'default' => 0,
-    ),
-  );
-
-  db_drop_primary_key($ret, 'pift_data');
-  db_drop_index($ret, 'pift_data', 'nid');
-  db_drop_index($ret, 'pift_data', 'cid');
-  db_change_field($ret, 'pift_data', 'ftid', 'ftid', $schema_fields['ftid'], array('primary key' => array('ftid')));
-  db_change_field($ret, 'pift_data', 'fid', 'fid', $schema_fields['fid']);
-  db_change_field($ret, 'pift_data', 'nid', 'nid', $schema_fields['nid'], array('indexes' => array('nid' => array('nid'))));
-  db_change_field($ret, 'pift_data', 'cid', 'cid', $schema_fields['cid'], array('indexes' => array('cid' => array('cid'))));
-  db_change_field($ret, 'pift_data', 'uid', 'uid', $schema_fields['uid']);
-  db_change_field($ret, 'pift_data', 'status', 'status', $schema_fields['status']);
-  return $ret;
-}
-
-/**
- * Remove {pift_subscriptions} and mailing variable.
- */
-function pift_update_6001() {
-  $ret = array();
-  variable_del('pift_failed_test_mail_text');
-  db_drop_table($ret, 'pift_subscriptions');
-  return $ret;
-}
-
-/**
- * Re-number the file ID's associate with the 6.x version of comment_upload.
- */
-function pift_update_6002() {
-  $ret = array();
-  $comment_upload = db_fetch_object(db_query_range("SELECT fid, legacy_fid FROM {comment_upload}", 0, 1));
-  $offset = $comment_upload->fid - $comment_upload->legacy_fid;
-  $ret[] = update_sql("UPDATE {pift_data} SET fid = (fid + ". $offset .") WHERE cid <> 0");
-  return $ret;
 }
