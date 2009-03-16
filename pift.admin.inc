@@ -31,15 +31,17 @@ function pift_admin_settings_form() {
   );
   $form['general']['pift_key'] = array(
     '#type' => 'textfield',
-    '#title' => t('Server key'),
+    '#title' => t('Client key'),
     '#default_value' => variable_get('pift_key', ''),
     '#description' => t('The key assigned to client.'),
+    '#required' => TRUE,
   );
   $form['general']['pift_server'] = array(
     '#type' => 'textfield',
     '#title' => t('Server URL'),
     '#default_value' => variable_get('pift_server', ''),
     '#description' => t('The URL of the test server, include ending forward slash.'),
+    '#required' => TRUE,
   );
 
   $form['interface'] = array(
@@ -64,7 +66,7 @@ function pift_admin_settings_form() {
     '#title' => t('Followup issue status'),
     '#description' => t('The status to set an issue to when a test result meets any of the following criteria.' . theme('item_list', $criteria)),
     '#default_value' => variable_get('pift_followup', 'patch (code needs work)'),
-    '#element_validate' => array('pifr_admin_settings_validate_status'),
+    '#element_validate' => array('pifr_admin_settings_form_validate_status'),
     '#autocomplete_path' => 'admin/project/pift/status',
   );
 
@@ -86,7 +88,7 @@ function pift_admin_settings_form() {
     '#title' => t('Issue statuses'),
     '#description' => t('List of issue status that an issue must be set to in order to test files.'),
     '#default_value' => variable_get('pift_status', 'patch (code needs review), patch (ready to commit)'),
-    '#element_validate' => array('pifr_admin_settings_validate_status'),
+    '#element_validate' => array('pifr_admin_settings_form_validate_status'),
     '#autocomplete_path' => 'admin/project/pift/status',
   );
   $form['criteria']['pift_retest'] = array(
@@ -120,7 +122,7 @@ function pift_admin_settings_form() {
  *
  * @param array $element Form element containing statuses.
  */
-function pifr_admin_settings_validate_status($element) {
+function pifr_admin_settings_form_validate_status($element) {
   $result = db_query('SELECT name
                       FROM {project_issue_state}');
   $availabe_states = array();
@@ -138,6 +140,23 @@ function pifr_admin_settings_validate_status($element) {
       form_set_error($element['#name'], t('Invalid issue statuses.'));
       break;
     }
+  }
+}
+
+/**
+ * Validate general settings.
+ */
+function pift_admin_settings_form_validate($form, &$form_state) {
+  if (drupal_strlen($form_state['values']['pift_key']) != 32) {
+    form_set_error('client_key', t('Key must be 32 characters long.'));
+  }
+
+  if (!$form_state['values']['pift_server'] || !@parse_url($form_state['values']['pift_server'])) {
+    form_set_error('pift_server', t('Server URL must be a complete URL, schema included.'));
+  }
+  else if (drupal_substr($form_state['values']['pift_server'],
+                          drupal_strlen($form_state['values']['pift_server']) - 1) != '/') {
+    form_set_error('pift_server', t('Server URL must end with a slash.'));
   }
 }
 
