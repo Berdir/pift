@@ -31,6 +31,11 @@ if (!defined('PIFR_RESPONSE_ACCEPTED')) {
   define('PIFR_RESPONSE_DENIED', 3);
 }
 
+/*
+ * Load required includes.
+ */
+module_load_include('project.inc', 'pift');
+
 /**
  * Implementation of hook_menu().
  */
@@ -122,30 +127,22 @@ function pift_cron() {
 }
 
 /**
- * Implementation of hook_form_alter().
+ * Implementation of hook_form_alter(). Must use generic form_alter() due to
+ * comment_upload implementation.
  */
-function pift_form_alter(&$form, &$form_state, $form_id) {
-  global $user;
-  switch ($form_id) {
-    case 'comment_form':
-      $node = node_load($form['nid']['#value']);
-      if ($node->type == 'project_issue') {
-        // Add in custom description for file testing.
-        if (isset($form['attachments']['wrapper']['new']['upload']) && pift_active_project($node->project_issue['pid'])) {
-          $description = filter_xss_admin(variable_get('pift_file_description', ''));
-          $form['attachments']['wrapper']['new']['upload']['#description'] .= $description;
-        }
-      }
-      break;
-    case 'project_issue_node_form':
-      // Add in custom description for file testing, test here for the existence of a project,
-      // so the description doesn't get added to page 1 of the new issue form.
-      if (isset($form['project_info']['pid']['#value']) && isset($form['attachments']['wrapper']['new']['upload']) && pift_active_project($form['project_info']['pid']['#value'])) {
-        $description = filter_xss_admin(variable_get('pift_file_description', ''));
-        $form['attachments']['wrapper']['new']['upload']['#description'] .= $description;
-      }
-      break;
+function pift_form_alter(&$form, $form_state, $form_id) {
+  if ($form_id == 'comment_form' || $form_id == 'project_issue_node_form') {
+    module_load_include('pages.inc', 'pift');
+    pift_pages_description_add($form, $form_state, $form_id);
   }
+}
+
+/**
+ * Implementation of hook_form_alter(): project_issue_project_edit_form.
+ */
+function pift_form_project_issue_project_edit_form_alter(&$form, $form_state) {
+  module_load_include('pages.inc', 'pift');
+  pift_pages_project_issue_settings($form, $form_state);
 }
 
 /**
@@ -717,6 +714,7 @@ function pift_check_issue_filters($nid) {
   $join = '';
   $where = '';
   $args = array($nid);
+  return TRUE;
 
   // Restrict to listed projects, if set.
   if ($projects = pift_project_list()) {
@@ -1180,58 +1178,5 @@ function pift_xmlrpc_error_handler($server, $error_code = NULL) {
     default:
       watchdog('project_remote', 'XML-RPC error communicating with %xmlrpc_url', $t_args, WATCHDOG_ERROR);
       break;
-  }
-}
-
-/**
- * Checks to see if the project is currently being monitored by
- * pift_s for file testing.
- *
- * @param $pid
- *   The project nid.
- * @return
- *   TRUE if the project is in the active project list, or if the list
- *   is empty.  FALSE otherwise.
- */
-function pift_active_project($pid) {
-  if ($projects = pift_project_list()) {
-    return in_array($pid, $projects);
-  }
-  else {
-    return TRUE;
-  }
-}
-
-/**
- * Formats the active project list into an array.
- *
- * @return
- *   An array of the active projects that will be examined for testing.
- */
-function pift_project_list() {
-  if ($projects = variable_get('pift_projects', '')) {
-    $projects = explode(',', $projects);
-    $projects = array_map('trim', $projects);
-    return $projects;
-  }
-  else {
-    return array();
-  }
-}
-
-/**
- * Formats the active status list into an array.
- *
- * @return
- *   An array of the statuses that will be examined for re-testing.
- */
-function pift_status_list() {
-  if ($status_list = variable_get('pift_test_status', '8, 14')) {
-    $status_list = explode(',', $status_list);
-    $status_list = array_map('trim', $status_list);
-    return $status_list;
-  }
-  else {
-    return array();
   }
 }

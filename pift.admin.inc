@@ -180,9 +180,7 @@ function pift_admin_settings_form_submit($form, &$form_state) {
  */
 function pift_admin_status($string) {
   $states = explode(',', $string);
-  foreach ($states as &$state) {
-    $state = trim($state);
-  }
+  $states = array_map('trim', $states);
   $query = array_pop($states);
 
   if ($query) {
