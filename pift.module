@@ -16,11 +16,10 @@ define('PIFT_RETEST', variable_get('pift_retest', 24 * 60 * 60));
 /*
  * Test status codes.
  */
-define('PIFT_UNTESTED', 0);
-define('PIFT_PASSED', 1);
-define('PIFT_FAILED', 2);
-define('PIFT_RETEST', 3);
-define('PIFT_NOT_READABLE', 4);
+define('PIFT_QUEUE', 1);
+define('PIFT_PASS', 2);
+define('PIFT_FAIL', 3);
+define('PIFT_RETEST', 4);
 
 /*
  * PIFR XML-RPC response codes.
@@ -35,6 +34,7 @@ if (!defined('PIFR_RESPONSE_ACCEPTED')) {
  * Load required includes.
  */
 module_load_include('project.inc', 'pift');
+module_load_include('test.inc', 'pift');
 
 /**
  * Implementation of hook_menu().
@@ -57,13 +57,13 @@ function pift_menu() {
     'access arguments' => array('administer projects'),
     'file' => 'pift.admin.inc',
   );
-  // Manual request for re-test.
-  $items['pift-server-request-retest'] = array(
+
+  $items['pift/retest/%'] = array(
     'title' => 'Request to re-test a file',
     'page callback' => 'drupal_get_form',
-    'page arguments' => array('pift_request_retest_confirm_form'),
-    'access callback' => 'user_access',
-    'access arguments' => array('re-test files'),
+    'page arguments' => array('pift_pages_retest_confirm_form', 2),
+    'access arguments' => array('pift re-test files'),
+    'file' => 'pift.pages.inc',
     'type' => MENU_CALLBACK,
   );
 
@@ -74,7 +74,7 @@ function pift_menu() {
  * Implementation of hook_perm().
  */
 function pift_perm() {
-  return array('re-test files');
+  return array('pift re-test files');
 }
 
 /**
@@ -82,13 +82,11 @@ function pift_perm() {
  */
 function pift_theme() {
   return array(
-    'pift_results' => array(
+    'pift_attachments' => array(
       'arguments' => array(
-        'results' => NULL,
-        'nid' => NULL,
-        'cid' => NULL,
-        'retest' => NULL,
+        'files' => array(),
       ),
+      'file' => 'pift.pages.inc',
     ),
     'pift_auto_close_message' => array(
       'arguments' => array(
@@ -102,7 +100,7 @@ function pift_theme() {
  * Implementation of hook_init().
  */
 function pift_init() {
-  drupal_add_css(drupal_get_path('module', 'pift_server') . '/pift.css');
+  drupal_add_css(drupal_get_path('module', 'pift') . '/pift.css');
 }
 
 /**
@@ -143,6 +141,103 @@ function pift_form_alter(&$form, $form_state, $form_id) {
 function pift_form_project_issue_project_edit_form_alter(&$form, $form_state) {
   module_load_include('pages.inc', 'pift');
   pift_pages_project_issue_settings($form, $form_state);
+}
+
+/**
+ * Implementation of hook_nodeapi().
+ */
+function pift_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
+  if ($node->type != 'project_issue') {
+    return;
+  }
+
+  switch ($op) {
+    case 'view':
+      if (!$a3) { // Full view.
+        if (isset($node->files)) {
+          $files = pift_test_get_files_node($node->nid);
+          $node->content['pift_files'] = array(
+            '#value' => '<div id="pift-results-' . $node->nid . '">' .
+                        theme('pift_attachments', $files) . '</div>',
+            '#weight' => 50,
+          );
+        }
+        unset($node->content['files']);
+      }
+      break;
+    case 'insert':
+      $files = upload_load($node);
+      pift_add_issue_files($files);
+      break;
+    case 'update':
+      // If files were deleted, remove related data in the test results table.
+      if (is_array($node->files)) {
+        foreach ($node->files as $file) {
+          // Can be either an array or object as this point.
+          $file = (object) $file;
+          if ($file->remove) {
+            db_query("DELETE FROM {pift_data} WHERE nid = %d AND fid = %d", $node->nid, $file->fid);
+          }
+        }
+      }
+      break;
+    case 'delete':
+      db_query("DELETE FROM {pift_data} WHERE nid = %d", $node->nid);
+      break;
+  }
+}
+
+/**
+ * Implementation of hook_comment().
+ */
+function pift_comment(&$comment, $op) {
+  // Comment can be a comment object, a form, or form_values.
+  if (is_object($comment)) {
+    $nid = $comment->nid;
+  }
+  elseif (is_array($comment)) {
+    $nid = is_array($comment['nid']) ? $comment['nid']['#value'] : $comment['nid'];
+  }
+  $node = node_load($nid);
+  if ($node->type != 'project_issue') {
+    return;
+  }
+
+  switch ($op) {
+    case 'view':
+      if (!isset($comment->files)) {
+        return;
+      }
+
+      // Remove comment_upload attachments table and generate new one.
+      $comment->comment = preg_replace('/<table class="comment-upload-attachments">.*?<\/table>/s', '', $comment->comment);
+      $files = pift_test_get_files_comment($comment->cid);
+      $comment->comment .= '<div id="pift-results-' . $comment->nid . '-' . $comment->cid . '">' .
+                           theme('pift_attachments', $files) . '</div>';
+      break;
+    case 'insert':
+      // Add attachments to this comment to the send queue.
+      $files = comment_upload_load_files($comment['cid']);
+      pift_add_followup_files($files);
+      pift_check_followup_metadata($comment);
+      break;
+    case 'update':
+      // If files were deleted, remove related data in the test results table.
+      if (is_array($comment['files'])) {
+        foreach ($comment['files'] as $file) {
+          // Can be either an array or object as this point.
+          $file = (object) $file;
+          if ($file->remove) {
+            db_query("DELETE FROM {pift_data} WHERE cid = %d AND fid = %d", $comment['cid'], $file->fid);
+          }
+        }
+      }
+      break;
+    case 'delete':
+      // Remove related data in the test results table.
+      db_query("DELETE FROM {pift_data} WHERE cid = %d", $comment->cid);
+      break;
+  }
 }
 
 /**
@@ -191,133 +286,6 @@ function pift_add_followup_files($files) {
         db_query("INSERT INTO {pift_data} (fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, '%s', %d, %d)", $file->fid, $file->nid, $file->cid, $user->uid, '', PIFT_UNTESTED, 0);
       }
     }
-  }
-}
-
-/**
- * Adds debug file testing links upon submission of testable patches.
- *
- * @param $file
- *   A testable file object, with PIFT's ftid included.
- */
-function pift_build_file_testing_links($file) {
-  $pass = PIFT_PASSED;
-  $fail = PIFT_FAILED;
-  $query = "destination=node/$file->nid";
-  if (isset($file->cid)) {
-    $query .= "#comment-$file->cid";
-  }
-
-  $for_file = t(' for file %file', array('%file' => $file->filename));
-
-  $links = '';
-  $links .= '<div>';
-  $links .= l(t("Manually pass testing"), "pift-server-file-testing-link/$file->ftid/$pass", array('query' => $query)) . $for_file;
-  $links .= '</div><div>';
-  $links .= l(t("Manually fail testing"), "pift-server-file-testing-link/$file->ftid/$fail", array('query' => $query)) . $for_file;
-  $links .= '</div>';
-
-  return $links;
-}
-
-/**
- * Callback for manually submitting patch test results.
- *
- * Useful for debugging.
- *
- * @param $ftid
- *   PIFT's file testing ID
- * @param $nid
- *   The issue node ID.
- * @param $cid
- *   Followup comment ID, or zero for an initial issue post.
- * @param $status
- *   Status to set the test result to.  Should be one of
- *   PIFT_PASSED, PIFT_FAILED
- */
-function pift_debug_file_testing_link($ftid, $status) {
-  if (variable_get('pift_debug_file_testing_link', '')) {
-    // Make sure we have all numeric args.
-    $args = func_get_args();
-    foreach ($args as $arg) {
-      if (!is_numeric($arg)) {
-        drupal_set_message(t('non-numeric argument passed'), 'error');
-        drupal_goto();
-      }
-    }
-    switch ((int) $status) {
-      case PIFT_PASSED:
-        $display_data = t('file passed testing');
-        break;
-      case PIFT_FAILED:
-        $display_data = t('file failed testing');
-        break;
-      default:
-        $display_data = '';
-        break;
-    }
-    $file = array(
-      'ftid' => $ftid,
-      'status' => $status,
-      'display_data' => $display_data,
-    );
-    pift_process_files(array($file));
-    drupal_goto();
-  }
-  else {
-    drupal_access_denied();
-  }
-
-}
-
-/**
- * Builds form for confirming patch retesting.
- *
- * @param $nid
- *   The node ID of the issue the patch is attached to.
- * @param $cid
- *   The comment ID of the followup the patch is attached
- *   to, if any.
- * @param $ftid
- *   The file testing ID of the file to be sent for retesting.
- * @return
- *   A form array.
- *
- */
-function pift_request_retest_confirm_form($form_state, $nid, $cid, $ftid) {
-
-  // Make sure we have all numeric args.
-  $args = func_get_args();
-  array_shift($args);
-  foreach ($args as $arg) {
-    if (!is_numeric($arg)) {
-      drupal_set_message(t('non-numeric argument passed'), 'error');
-      drupal_goto("node/$nid");
-    }
-  }
-
-  if ($cid) {
-    $file_info = db_fetch_object(db_query("SELECT pd.ftid, pd.nid, f.filename FROM {pift_data} pd INNER JOIN {files} f ON pd.fid = f.fid WHERE pd.ftid = %d", $ftid));
-  }
-  else {
-    $file_info = db_fetch_object(db_query("SELECT pd.ftid, pd.nid, f.filename FROM {pift_data} pd INNER JOIN {files} f ON pd.fid = f.fid WHERE pd.ftid = %d", $ftid));
-  }
-
-  if ($file_info) {
-    $form = array();
-    $form['#file_info'] = $file_info;
-
-    return confirm_form(
-      $form,
-      t('Are you sure you want to submit %file for re-testing?', array('%file' => $file_info->filename)),
-      'node/'. $file_info->nid,
-      '',
-      t('Retest file'),
-      t('Cancel'));
-  }
-  else {
-    drupal_set_message(t('Invalid file submitted.'), 'error');
-    drupal_goto("node/$nid");
   }
 }
 
@@ -599,111 +567,6 @@ function pift_send_file_data() {
 }
 
 /**
- * Implementation of hook_xmlrpc()
- */
-function pift_xmlrpc() {
-  return array(
-    array(
-      'pift.test.results',
-      'pift_process_test_results',
-      array('struct', 'struct', 'struct'),
-      t('receive file test results from a test server')
-    ),
-  );
-}
-
-/**
- * Validates incoming test results and passes them along for processing.
- *
- * @param $server
- *   An associative array of login parameters, as follows:
- *     'url'        => The Full XML-RPC URL of the server sending the
- *                      data, ex. http://example.com/xmlrpc.php
- *     'server_key' => The server key for the server sending the data.
- *
- * @param $files
- *   An array of files to process. Each element an associative array
- *   of information for one file, as follows:
- *     'ftid'         => The file test ID that was originally passed to
- *                       the test server for the file in question.
- *
- *     'status'       => The file's test status (passed, failed, etc.).
- *
- *     'display_data' => Optional. A string of additional data to display
- *                       when rendering the file test results.
- *
- * @return
- *   An empty array if the test data was properly validated,
- *   otherwise an associative array with these key/value pairs:
- *     'error' => PIFT_XMLRPC_INVALID_SERVER | PIFT_XMLRPC_INVALID_SERVER_KEY
- */
-function pift_process_test_results($server, $files) {
-  // Build an array of valid test servers for this install.
-  $test_servers = explode("\n", variable_get('pift_sites', ''));
-  $valid_servers = array();
-  foreach ($test_servers as $test_server) {
-    if ($test_server) {
-      $parts = explode('@', $test_server);
-      $valid_servers[$parts[1]] = $parts[0];
-    }
-  }
-  // Validate the test server URL against the list of valid test servers.
-  if (isset($valid_servers[$server['url']])) {
-    // Validate the server key for the test server.
-    if ($valid_servers[$server['url']] == $server['server_key']) {
-      pift_process_files($files);
-      return array();
-    }
-    // Bad login.
-    else {
-      watchdog('project_remote', '%server attempted to send file test data, and has an invalid server key.', array('%server' => $server['url']), WATCHDOG_WARNING);
-      return array('error' => 'PIFT_XMLRPC_INVALID_SERVER_KEY');
-    }
-  }
-  // Bad test server.
-  else {
-    watchdog('project_remote', '%server attempted to send file test data, and is not on the valid server list.', array('%server' => $server['url']), WATCHDOG_WARNING);
-    return array('error' => 'PIFT_XMLRPC_INVALID_SERVER');
-  }
-}
-
-/**
- * Processing incoming file tests, and stores the results.
- *
- * @param $files
- *   An array of files to process. Each element an associative array
- *   of information for one file, as follows:
- *     'ftid'         => The file test ID that was originally passed to
- *                       the test server for the file in question.
- *
- *     'status'       => The file's test status (passed, failed, etc.).
- *
- *     'display_data' => Optional. A string of addition data to display
- *                       when rendering the file test results.
- */
-function pift_process_files($files) {
-  $ftids = array();
-  $time = time();
-  foreach ($files as $file) {
-    // Discard the result data if the file isn't a testable file anymore.
-    if ($nid = db_result(db_query("SELECT nid FROM {pift_data} WHERE ftid = %d", $file['ftid']))) {
-      if (pift_check_issue_filters($nid)) {
-        // Update the entry that was originally entered for this file,
-        // and set the last tested timestamp to the current time.
-        db_query("UPDATE {pift_data} SET display_data = '%s', status = %d, timestamp = %d WHERE ftid = %d", $file['display_data'], $file['status'], $time, $file['ftid']);
-        $ftids[] = $file['ftid'];
-        $file['issue_id'] = $nid;
-        pift_check_auto_followup($file);
-      }
-      else {
-        // File test result didn't pass filters, but still update the testing timestamp.
-        db_query("UPDATE {pift_data} SET timestamp = %d WHERE ftid = %d", $time, $file['ftid']);
-      }
-    }
-  }
-}
-
-/**
  * Checks an issue to see if it still passes testable file filters.
  *
  * @param $nid
@@ -819,184 +682,6 @@ function pift_auto_followup($last_file) {
   ));
 }
 
-/**
- * Implementation of hook_nodeapi().
- */
-function pift_nodeapi(&$node, $op, $arg) {
-  if ($node->type == 'project_issue') {
-    // Add attachments for this node to the send queue.
-    if ($op == 'insert') {
-      $files = upload_load($node);
-      pift_add_issue_files($files);
-    }
-    // Only display test results for issue nodes when it's a full view.
-    elseif (arg(0) == 'node' && is_numeric(arg(1))) {
-      switch ($op) {
-        case 'view':
-          // Pull file attachments for this issue node.
-          $result = db_query("SELECT f.filename, pd.ftid, pd.nid, pd.display_data, pd.status FROM {pift_data} pd INNER JOIN {files} f ON pd.fid = f.fid WHERE pd.nid = %d AND pd.cid = %d AND f.filepath <> '' AND pd.status <> %d ORDER BY ftid", $node->nid, 0, PIFT_UNTESTED);
-          $display = array();
-
-          // Load the files into an array to pass to the theming function.
-          $retest = user_access('re-test files') && pift_check_issue_filters($node->nid);
-          while ($file = db_fetch_array($result)) {
-            $display[$file['ftid']] = array(
-              'filename' => check_plain($file['filename']),
-              'status' => $file['status'],
-              'display_data' => filter_xss_admin($file['display_data']),  // Coming from a trusted server, relaxed filtering.
-            );
-          }
-          // Display table just below file attachment.
-          $node->content['file_test_data'] = array(
-            '#value' => theme('pift_results', $display, $node->nid, 0, $retest),
-            '#weight' => 51,  // Just below the upload attachments.
-          );
-          // Debug display.
-          $debug_links = variable_get('pift_debug_file_testing_link', '');
-          if ($debug_links) {
-            $files = upload_load($node);
-            $debug_test_links = array();
-            foreach ($files as $file) {
-              if (preg_match(PIFT_FILE_REGEX, $file->filename) && file_exists($file->filepath) && ($ftid = db_result(db_query("SELECT ftid FROM {pift_data} WHERE nid = %d AND cid = 0 AND fid = %d", $file->nid, $file->fid)))) {
-                $file->ftid = $ftid;
-                $debug_test_links[] = pift_build_file_testing_links($file);
-              }
-            }
-          }
-          if (!empty($debug_test_links)) {
-            $node->content['file_test_debug_links'] = array(
-              '#value' => theme('item_list', $debug_test_links),
-              '#weight' => 52,  // Just below the upload attachments.
-            );
-          }
-          break;
-        case 'delete':
-          // Remove related data in the test results table.
-          db_query("DELETE FROM {pift_data} WHERE nid = %d", $node->nid);
-          break;
-        case 'update':
-          // If files were deleted, remove related data in the test results table.
-          if (is_array($node->files)) {
-            foreach ($node->files as $file) {
-              // Can be either an array or object as this point.
-              $file = (object) $file;
-              if ($file->remove) {
-                db_query("DELETE FROM {pift_data} WHERE nid = %d AND fid = %d", $node->nid, $file->fid);
-              }
-            }
-          }
-          break;
-      }
-    }
-  }
-}
-
-/**
- * Implementation of hook_user().
- */
-function pift_user($type, $edit, &$user, $category = NULL) {
-  if ($type == 'delete') {
-    db_query("UPDATE {pift_data} SET uid = 0 WHERE uid = %d", $user->uid);
-  }
-}
-
-/**
- * Implementation of hook_comment().
- */
-function pift_comment(&$comment, $op) {
-  static $cids = NULL;
-
-  // $comment can be a comment object, or a form or form_values.
-  if (is_object($comment)) {
-    $nid = $comment->nid;
-  }
-  elseif (is_array($comment)) {
-    $nid = is_array($comment['nid']) ? $comment['nid']['#value'] : $comment['nid'];
-  }
-  $node = node_load($nid);
-  if ($node->type != 'project_issue') {
-    return;
-  }
-
-  switch ($op) {
-    case 'view':
-
-      // To boost performance, cache the test results for all issue followups
-      // at once, then grab the display data from the cache.
-      if (!isset($cids)) {
-        $cids = array();
-        // Pull file attachments for all followups on the issue.
-        $result = db_query("SELECT f.filename, cu.description, pd.ftid, pd.nid, pd.cid, pd.display_data, pd.status FROM {pift_data} pd INNER JOIN {comment_upload} cu ON pd.fid = cu.fid INNER JOIN {files} f ON pd.fid = f.fid WHERE pd.nid = %d AND pd.cid <> %d AND pd.status <> %d ORDER BY pd.ftid", $node->nid, 0, PIFT_UNTESTED);
-
-        // Load the files into an array to pass to the theming function.
-        $retest = user_access('re-test files') && pift_check_issue_filters($nid);
-        while ($file = db_fetch_array($result)) {
-          $cids[$file['cid']][$file['ftid']] = array(
-            'filename' => check_plain($file['filename']),
-            'description' => check_plain($file['description']),
-            'status' => $file['status'],
-            'display_data' => filter_xss_admin($file['display_data']),
-          );
-        }
-
-        // Convert the results to themed display tables.
-        foreach ($cids as $cid => $display) {
-          $cids[$cid] = theme('pift_results', $display, $nid, $cid, $retest);
-        }
-      }
-
-      // Add the test result display to the end of the comment.
-      // TODO: When comment module's rendering isn't so whack,
-      // always put this right after the attachment table.
-      if (!empty($cids[$comment->cid])) {
-        $comment->comment .= $cids[$comment->cid];
-      }
-      // Debug display.
-      $debug_links = variable_get('pift_debug_file_testing_link', '');
-      if ($debug_links) {
-        $files = comment_upload_load_files($comment->cid);
-        if (is_array($files)) {
-          $debug_test_links = array();
-          foreach ($files as $file) {
-            // This blows, but comment_upload now stores files as arrays,
-            // not objects, so cast here.
-            $file = (object) $file;
-            if (preg_match(PIFT_FILE_REGEX, $file->filename) && file_exists($file->filepath) && ($ftid = db_result(db_query("SELECT ftid FROM {pift_data} WHERE nid = %d AND cid = %d AND fid = %d", $file->nid, $file->cid, $file->fid)))) {
-              $file->ftid = $ftid;
-              $debug_test_links[] = pift_build_file_testing_links($file);
-            }
-          }
-        }
-        if (!empty($debug_test_links)) {
-          $comment->comment .= theme('item_list', $debug_test_links);
-        }
-      }
-      break;
-    case 'insert':
-      // Add attachments to this comment to the send queue.
-      $files = comment_upload_load_files($comment['cid']);
-      pift_add_followup_files($files);
-      pift_check_followup_metadata($comment);
-      break;
-    case 'update':
-      // If files were deleted, remove related data in the test results table.
-      if (is_array($comment['files'])) {
-        foreach ($comment['files'] as $file) {
-          // Can be either an array or object as this point.
-          $file = (object) $file;
-          if ($file->remove) {
-            db_query("DELETE FROM {pift_data} WHERE cid = %d AND fid = %d", $comment['cid'], $file->fid);
-          }
-        }
-      }
-      break;
-    case 'delete':
-      // Remove related data in the test results table.
-      db_query("DELETE FROM {pift_data} WHERE cid = %d", $comment->cid);
-      break;
-  }
-}
-
 function pift_check_followup_metadata($comment) {
 
   $auto_followup_sid = variable_get('pift_auto_followup_sid', 0);
@@ -1056,84 +741,6 @@ function pift_check_followup_metadata($comment) {
       }
     }
   }
-}
-
-/**
- * Theme test result data into a table.
- *
- * @param $results
- *   An array of test result data.
- * @param $nid
- *   The issue node ID.
- * @param $cid
- *   The comment ID (optional).
- * @param $retest
- *   Boolean indicating if a re-test link should be provided.
- * @return
- *   An HTML string of the rendered table.
- */
-function theme_pift_results($results, $nid, $cid, $retest) {
-  $rows = array();
-  $output = '';
-
-  // One row for each file test result.
-  foreach ($results as $ftid => $result) {
-    $description = !empty($result['description']) ? $result['description'] : $result['filename'];
-    $retest_link = $retest ? ' - '. l(t('Request re-test'), "pift-server-request-retest/$nid/$cid/$ftid") : '';
-    switch ($result['status']) {
-      // File passed testing.
-      case PIFT_PASSED:
-        $rows[] = array(
-          'data' => array(
-            $description,
-            t('passed') . $retest_link,
-            $result['display_data'],  // Already filtered.
-          ),
-          'class' => 'pift-passed',
-        );
-        break;
-      // File failed testing.
-      case PIFT_FAILED:
-        $rows[] = array(
-          'data' => array(
-            $description,
-            t('failed') . $retest_link,
-            $result['display_data'],  // Already filtered.
-          ),
-          'class' => 'pift-failed',
-        );
-        break;
-      case PIFT_RETEST:
-        $rows[] = array(
-          'data' => array(
-            $description,
-            t('re-testing'),
-            '',
-          ),
-          'class' => 'pift-retest',
-        );
-        break;
-    }
-  }
-
-  // Only build the table if there are results to display.
-  if (!empty($rows)) {
-    $header = array(
-      array(
-        'data' => t('Testbed results'),
-        'colspan' => '3',
-      )
-    );
-
-    $id = "file-test-results-$nid";
-    if (isset($cid)) {
-      $id .= "-$cid";
-    }
-
-    $output = '<div id="'. $id .'" class="file-test-results">'. theme('table', $header, $rows) .'</div>';
-  }
-
-  return $output;
 }
 
 /**

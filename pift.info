@@ -3,5 +3,6 @@ name = PIFT
 description = Integrates into project to provide an automated testing hub.
 dependencies[] = project
 dependencies[] = project_issue
+dependencies[] = project_release
 package = Project
 core = 6.x

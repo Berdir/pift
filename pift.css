@@ -1,14 +1,14 @@
 /* $Id$ */
 
-div.file-test-results table tr.pift-passed {
+tr.pift-pass {
   background-color: #99FF99 !important;
 }
 
-div.file-test-results table tr.pift-failed {
+tr.pift-fail {
   background-color: #FF9999 !important;
 }
 
-div.file-test-results table tr.pift-retest {
+tr.pift-retest {
   background-color: #FFFF77 !important;
 }
 
