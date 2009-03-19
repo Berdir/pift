@@ -195,7 +195,7 @@ function pift_admin_status($string) {
 
   $suggestions = array();
   while ($suggestion = db_result($result)) {
-    $suggestions[] = implode(', ', array_merge($states, array($suggestion)));
+    $suggestions[implode(', ', array_merge($states, array($suggestion)))] = $suggestion;
   }
-  drupal_json(drupal_map_assoc($suggestions));
+  drupal_json($suggestions);
 }
