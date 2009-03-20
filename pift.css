@@ -11,8 +11,3 @@ tr.pift-fail {
 tr.pift-retest {
   background-color: #FFFF77 !important;
 }
-
-div.pift-server-warning, span.pift-server-warning {
-  font-weight: bold;
-  color: red;
-}

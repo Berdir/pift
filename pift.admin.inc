@@ -24,8 +24,8 @@ function pift_admin_settings_form() {
     '#options' => array(
       -1 => t('Disabled'),
       0 => t('Cron run'),
-      60 => t('Hourly'),
-      1440 => t('Daily'),
+      01 * 60 * 60 => t('Hourly'),
+      24 * 60 * 60 => t('Daily'),
     ),
     '#default_value' => PIFT_FREQUENCY,
   );
@@ -97,6 +97,7 @@ function pift_admin_settings_form() {
     '#description' => t('Number of days to wait before re-testing a previously passed file, or -1 to prevent re-testing.'),
     '#default_value' => PIFT_RETEST,
     '#options' => array(
+      -1,
       24 * 60 * 60,
       48 * 60 * 60,
       72 * 60 * 60,
@@ -106,6 +107,7 @@ function pift_admin_settings_form() {
     '#required' => TRUE,
   );
   $form['criteria']['pift_retest']['#options'] = drupal_map_assoc($form['criteria']['pift_retest']['#options'], 'format_interval');
+  $form['criteria']['pift_retest']['#options'][-1] = t('Disabled');
 
   $form['pift_reset_send_queue'] = array(
     '#type' => 'checkbox',

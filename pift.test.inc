@@ -177,7 +177,7 @@ function pift_test_add_files(array $files) {
  */
 function pift_test_add_file(array $file) {
   db_query('INSERT INTO {pift_test} (status)
-            VALUES (%d)', PIFT_QUEUE);
+            VALUES (%d)', PIFT_STATUS_QUEUE);
   $test_id = db_last_insert_id('pift_test', 'test_id');
 
   db_query('INSERT INTO {pift_file} (fid, test_id)
@@ -191,7 +191,7 @@ function pift_test_add_file(array $file) {
  */
 function pift_test_add_release(array $release) {
   db_query('INSERT INTO {pift_test} (status)
-            VALUES (%d)', PIFT_QUEUE);
+            VALUES (%d)', PIFT_STATUS_QUEUE);
   $test_id = db_last_insert_id('pift_test', 'test_id');
 
   db_query('INSERT INTO {pift_release} (rid, test_id)
