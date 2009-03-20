@@ -12,6 +12,7 @@ define('PIFT_FOLLOWUP', variable_get('pift_followup', 'patch (code needs work)')
 define('PIFT_REGEX', variable_get('pift_regex', '/(\.diff|\.patch)$/'));
 define('PIFT_STATUS', variable_get('pift_status', 'patch (code needs review), patch (ready to commit)'));
 define('PIFT_RETEST', variable_get('pift_retest', 24 * 60 * 60));
+define('PIFT_DELETE', variable_get('pift_delete', FALSE));
 
 /*
  * Test status codes.
@@ -107,6 +108,11 @@ function pift_init() {
  * Implementation of hook_cron().
  */
 function pift_cron() {
+  if (PIFT_DELETE) {
+    pift_test_delete_files();
+    variable_set('pift_delete', FALSE);
+  }
+
   $send = variable_get('pift_send_frequency', -1);
   // Check if sending is enabled.
   if ($send != -1) {
@@ -147,42 +153,28 @@ function pift_form_project_issue_project_edit_form_alter(&$form, $form_state) {
  * Implementation of hook_nodeapi().
  */
 function pift_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
-  if ($node->type != 'project_issue') {
+  if ($node->type != 'project_issue' || empty($node->files)) {
     return;
   }
 
   switch ($op) {
     case 'view':
       if (!$a3) { // Full view.
-        if (isset($node->files)) {
-          $files = pift_test_get_files_node($node->nid);
-          $node->content['pift_files'] = array(
-            '#value' => '<div id="pift-results-' . $node->nid . '">' .
-                        theme('pift_attachments', $files) . '</div>',
-            '#weight' => 50,
-          );
-        }
-        unset($node->content['files']);
+        $files = pift_test_get_files_node($node->nid);
+        $node->content['pift_files'] = array(
+          '#value' => '<div id="pift-results-' . $node->nid . '">' .
+                      theme('pift_attachments', $files) . '</div>',
+          '#weight' => 50,
+        );
+        unset($node->content['files']); // Remove old attachments table.
       }
       break;
     case 'insert':
       $files = upload_load($node);
-      pift_add_issue_files($files);
-      break;
-    case 'update':
-      // If files were deleted, remove related data in the test results table.
-      if (is_array($node->files)) {
-        foreach ($node->files as $file) {
-          // Can be either an array or object as this point.
-          $file = (object) $file;
-          if ($file->remove) {
-            db_query("DELETE FROM {pift_data} WHERE nid = %d AND fid = %d", $node->nid, $file->fid);
-          }
-        }
-      }
+      pift_test_add_files($files);
       break;
     case 'delete':
-      db_query("DELETE FROM {pift_data} WHERE nid = %d", $node->nid);
+      variable_set('pift_delete', TRUE);
       break;
   }
 }
@@ -191,6 +183,44 @@ function pift_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
  * Implementation of hook_comment().
  */
 function pift_comment(&$comment, $op) {
+  $node = pift_comment_load_node($comment);
+  if ($node->type != 'project_issue') {
+    return;
+  }
+
+  switch ($op) {
+    case 'view':
+      if (!empty($comment->files)) {
+        // Remove comment_upload attachments table and generate new one.
+        $comment->comment = preg_replace('/<table class="comment-upload-attachments">.*?<\/table>/s', '', $comment->comment);
+        $files = pift_test_get_files_comment($comment->cid);
+        $comment->comment .= '<div id="pift-results-' . $comment->nid . '-' . $comment->cid . '">' .
+                             theme('pift_attachments', $files) . '</div>';
+      }
+      break;
+    case 'insert':
+      if (!empty($comment->files) && pift_test_check_criteria_issue($node)) {
+        // Add attachments to this comment to the send queue.
+        $files = comment_upload_load_files($comment['cid']);
+        pift_test_add_files($files);
+
+        // Add previously submitted files if issue state changes.
+        pift_test_add_previous_files($comment['nid']);
+      }
+      break;
+    case 'delete':
+      variable_set('pift_delete', TRUE);
+      break;
+  }
+}
+
+/**
+ * Load the parent node for the specified comment.
+ *
+ * @param mixed $comment Comment information passed to hook_comment().
+ * @return object Parent node.
+ */
+function pift_comment_load_node($comment) {
   // Comment can be a comment object, a form, or form_values.
   if (is_object($comment)) {
     $nid = $comment->nid;
@@ -198,46 +228,7 @@ function pift_comment(&$comment, $op) {
   elseif (is_array($comment)) {
     $nid = is_array($comment['nid']) ? $comment['nid']['#value'] : $comment['nid'];
   }
-  $node = node_load($nid);
-  if ($node->type != 'project_issue') {
-    return;
-  }
-
-  switch ($op) {
-    case 'view':
-      if (!isset($comment->files)) {
-        return;
-      }
-
-      // Remove comment_upload attachments table and generate new one.
-      $comment->comment = preg_replace('/<table class="comment-upload-attachments">.*?<\/table>/s', '', $comment->comment);
-      $files = pift_test_get_files_comment($comment->cid);
-      $comment->comment .= '<div id="pift-results-' . $comment->nid . '-' . $comment->cid . '">' .
-                           theme('pift_attachments', $files) . '</div>';
-      break;
-    case 'insert':
-      // Add attachments to this comment to the send queue.
-      $files = comment_upload_load_files($comment['cid']);
-      pift_add_followup_files($files);
-      pift_check_followup_metadata($comment);
-      break;
-    case 'update':
-      // If files were deleted, remove related data in the test results table.
-      if (is_array($comment['files'])) {
-        foreach ($comment['files'] as $file) {
-          // Can be either an array or object as this point.
-          $file = (object) $file;
-          if ($file->remove) {
-            db_query("DELETE FROM {pift_data} WHERE cid = %d AND fid = %d", $comment['cid'], $file->fid);
-          }
-        }
-      }
-      break;
-    case 'delete':
-      // Remove related data in the test results table.
-      db_query("DELETE FROM {pift_data} WHERE cid = %d", $comment->cid);
-      break;
-  }
+  return node_load($nid);
 }
 
 /**
@@ -248,45 +239,6 @@ function pift_reset_send_queue() {
   // Remove all untested files.
   // TODO: Do we really want to do this??
   db_query("DELETE FROM {pift_data} WHERE status = %d", PIFT_UNTESTED);
-}
-
-/**
- * Adds issue attachments matching PIFT_FILE_REGEX to the send queue.
- *
- * @param $files
- *   An array of file objects.
- */
-function pift_add_issue_files($files) {
-  global $user;
-  if (is_array($files)) {
-    foreach ($files as $file) {
-      // Put the file data into the send queue.
-      if (preg_match(PIFT_FILE_REGEX, $file->filename) && file_exists($file->filepath)) {
-        db_query("INSERT INTO {pift_data} (fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, '%s', %d, %d)", $file->fid, $file->nid, 0, $user->uid, '', PIFT_UNTESTED, 0);
-      }
-    }
-  }
-}
-
-/**
- * Add followup attachments matching PIFT_FILE_REGEX to the send queue.
- *
- * @param $files
- *   An array of file objects.
- */
-function pift_add_followup_files($files) {
-  global $user;
-  if (is_array($files)) {
-    foreach ($files as $file) {
-      // This blows, but comment_upload now stores files as arrays,
-      // not objects, so cast here.
-      $file = (object) $file;
-      // Put the file data into the send queue.
-      if (preg_match(PIFT_FILE_REGEX, $file->filename) && file_exists($file->filepath)) {
-        db_query("INSERT INTO {pift_data} (fid, nid, cid, uid, display_data, status, timestamp) VALUES (%d, %d, %d, %d, '%s', %d, %d)", $file->fid, $file->nid, $file->cid, $user->uid, '', PIFT_UNTESTED, 0);
-      }
-    }
-  }
 }
 
 /**
@@ -564,46 +516,6 @@ function pift_send_file_data() {
   if (!empty($sent)) {
     watchdog('project_remote', 'Project issue data sent successfully to the following servers:!servers', array('!servers' => theme('item_list', $sent)));
   }
-}
-
-/**
- * Checks an issue to see if it still passes testable file filters.
- *
- * @param $nid
- *   The issue node the file is attached to.
- */
-function pift_check_issue_filters($nid) {
-
-  $join = '';
-  $where = '';
-  $args = array($nid);
-  return TRUE;
-
-  // Restrict to listed projects, if set.
-  if ($projects = pift_project_list()) {
-    $where .= ' AND pi.pid IN ('. implode(',', array_fill(0, count($projects), '%d')) .')';
-    $args = array_merge($args, $projects);
-  }
-
-  // Restrict to the status list, if set.
-  if ($status_list = pift_status_list()) {
-    $where .= ' AND pi.sid IN ('. implode(',', array_fill(0, count($status_list), '%d')) .')';
-    $args = array_merge($args, $status_list);
-  }
-
-  // Restrict to release tag, if set.
-  if (module_exists('project_release')) {
-    if ($release_tag_regex = variable_get('pift_release_tag_regex', '')) {
-      $join = ' LEFT JOIN {project_release_nodes} prn ON pi.rid = prn.nid';
-      $where .= " AND prn.tag REGEXP '%s'";
-      $args[] = $release_tag_regex;
-    }
-  }
-
-  // Pull last testable file for the issue.
-  $passed_filters = db_result(db_query("SELECT pi.nid FROM {project_issues} pi$join WHERE pi.nid = %d$where", $args));
-
-  return $passed_filters;
 }
 
 /**

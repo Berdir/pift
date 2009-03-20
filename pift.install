@@ -59,7 +59,7 @@ function pift_schema() {
   $schema['pift_release'] = array(
     'description' => t('Relates releases to tests.'),
     'fields' => array(
-      'release_nid' => array(
+      'rid' => array(
         'description' => t('Reference to release NID.'),
         'type' => 'serial',
         'unsigned' => TRUE,
@@ -71,7 +71,7 @@ function pift_schema() {
         'not null' => TRUE,
       ),
     ),
-    'primary key' => array('release_nid', 'test_id'),
+    'primary key' => array('rid', 'test_id'),
   );
   $schema['pift_project'] = array(
     'description' => t('Store project testing preference.'),
