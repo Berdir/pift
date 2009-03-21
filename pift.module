@@ -344,7 +344,7 @@ function pift_check_auto_followup($file) {
  */
 function pift_auto_followup($last_file) {
 
-  project_issue_add_followup(array(
+  project_issue_add_auto_followup(array(
     'nid' => $last_file->nid,
     'sid' => variable_get('pift_auto_followup_sid', 0),
     'comment' => theme('pift_auto_close_message', $last_file),
