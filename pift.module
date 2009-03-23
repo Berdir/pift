@@ -17,7 +17,7 @@ define('PIFT_SERVER', variable_get('pift_server', ''));
 define('PIFT_DESCRIPTION', variable_get('pift_description', ''));
 define('PIFT_FOLLOWUP', variable_get('pift_followup', 'patch (code needs work)'));
 define('PIFT_REGEX', variable_get('pift_regex', '/(\.diff|\.patch)$/'));
-define('PIFT_STATUS', variable_get('pift_status', 'patch (code needs review), patch (ready to commit)'));
+define('PIFT_TAG', variable_get('pift_tag', 'DRUPAL-7'));
 define('PIFT_RETEST', variable_get('pift_retest', 24 * 60 * 60));
 define('PIFT_DELETE', variable_get('pift_delete', FALSE));
 
@@ -55,13 +55,6 @@ function pift_menu() {
     'description' => 'Configure PIFT.',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('pift_admin_settings_form'),
-    'access arguments' => array('administer projects'),
-    'file' => 'pift.admin.inc',
-  );
-  $items['admin/project/pift/status/%'] = array(
-    'title' => 'AHAH status',
-    'page callback' => 'pift_admin_status',
-    'page arguments' => array(4),
     'access arguments' => array('administer projects'),
     'file' => 'pift.admin.inc',
   );
@@ -126,10 +119,10 @@ function pift_cron() {
     $time = time();
     if ($time > PIFT_LAST + PIFT_FREQUENCY) {
       module_load_include('cron.inc', 'pift');
-      
-      pift_retest_check();
-      pift_send_file_data();
-      
+
+      pift_cron_retest();
+//      pift_send_file_data();
+
       variable_set('pift_last', $time);
     }
   }

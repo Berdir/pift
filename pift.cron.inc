@@ -8,57 +8,42 @@
  */
 
 /**
- * Marks previously passed files for re-testing, if:
- *   1. The file's last test is older than the retest interval.
- *   2. The file is part of a project that's being tested.
- *   3. The file is attached to an issue that has one of the
- *      issue states marked for testing.
- *
+ * Mark files for re-testing if they still meet all the criteria and the
+ * re-test interval has passed.
  */
-function pift_retest_check() {
-
-  // Never re-test files.
-  if (PIFT_RETEST == '-1') {
+function pift_cron_retest() {
+  if (PIFT_RETEST == -1) {
     return;
   }
 
-  // Set up the retest time limit.
-  $retest_time = time() - (PIFT_RETEST * 60 * 60);
+  $sids = variable_get('pift_status', array());
+  $retest_time = time() - PIFT_RETEST;
+  db_query("UPDATE {pift_test}
+            SET status = %d
+            WHERE test_id IN (
+              SELECT pf.test_id
+              FROM {files} f
+              LEFT JOIN {upload} u
+                ON f.fid = u.fid
+              LEFT JOIN {comment_upload} cu
+                ON f.fid = cu.fid
 
-  $where = '';
-  $where_parts = array();
-  $args = array(PIFT_STATUS_RETEST, PIFT_STATUS_PASSED, $retest_time);
+              JOIN {project_issues} pi
+                ON (u.nid = pi.nid OR cu.nid = pi.nid)
+              JOIN {pift_project} p
+                ON pi.pid = p.pid
+              JOIN {project_release_nodes} r
+                ON pi.rid = r.nid
 
-  // Restrict to listed projects, if set.
-  if ($projects = pift_project_list()) {
-    $where_parts[] = ' p.nid IN ('. implode(',', array_fill(0, count($projects), '%d')) .')';
-    $args = array_merge($args, $projects);
-  }
+              JOIN {pift_file} pf
+                ON (u.fid = pf.fid OR cu.fid = pf.fid)
+              WHERE pi.sid IN (" . implode(',', array_fill(0, count($sids), '%d')) . ")
+              AND r.tag REGEXP '%s'
+            )
+            AND last_tested < %d",
+            array_merge(array(PIFT_STATUS_QUEUE), $sids, array(PIFT_TAG), array($retest_time)));
 
-  // Restrict to the status list, if set.
-  if ($status_list = pift_status_list()) {
-    $where_parts[] = 'pi.sid IN ('. implode(',', array_fill(0, count($status_list), '%d')) .')';
-    $args = array_merge($args, $status_list);
-  }
-
-  // Add in release info if it exists.
-  if (module_exists('project_release')) {
-    // Restrict to release tag, if set.
-    if ($release_tag_regex = variable_get('pift_release_tag_regex', '')) {
-      $join = ' INNER JOIN {project_release_nodes} prn ON pi.rid = prn.nid';
-      $where_parts[] = "prn.tag REGEXP '%s'";
-      $args[] = $release_tag_regex;
-    }
-    else {
-      $join = '';
-    }
-  }
-
-  if (!empty($where_parts)) {
-    $where .= " AND nid IN (SELECT pi.nid FROM {project_issues} pi INNER JOIN {node} p ON p.nid = pi.pid$join WHERE ". implode(' AND ', $where_parts) .")";
-  }
-
-  db_query("UPDATE {pift_data} SET status = %d WHERE status = %d AND timestamp < %d$where", $args);
+  // TODO Query for releases when they are built nightly.
 }
 
 /**

@@ -124,20 +124,11 @@ function pift_test_check_criteria_issue($node) {
 
   $supported_branches = array('DRUPAL-6');
   $release = node_load($node->project_issue['rid']);
-  $supported = FALSE;
-  foreach ($supported_branches as $branch) {
-    if (strpos($release->project_release['tag'], $branch) !== FALSE) {
-      $supported = TRUE;
-      break;
-    }
-  }
-  if (!$supported) {
+  if (!preg_match(PIFT_TAG, $release->project_release['tag'])) {
     return FALSE;
   }
 
-  $states = project_issue_state();
-  $test_states = array_map('trim', explode(',', PIFT_STATUS));
-  if (!in_array($states[$node->project_issue['sid']], $test_states)) {
+  if (!in_array($node->project_issue['sid'], variable_get('pift_status', array()))) {
     return FALSE;
   }
 

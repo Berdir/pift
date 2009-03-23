@@ -28,6 +28,7 @@ function pift_admin_settings_form() {
       24 * 60 * 60 => t('Daily'),
     ),
     '#default_value' => PIFT_FREQUENCY,
+    '#required' => TRUE,
   );
   $form['general']['pift_key'] = array(
     '#type' => 'textfield',
@@ -62,12 +63,12 @@ function pift_admin_settings_form() {
     t('The file is the last testable file posted to the issue.'),
   );
   $form['interface']['pift_followup'] = array(
-    '#type' => 'textfield',
+    '#type' => 'select',
     '#title' => t('Followup issue status'),
     '#description' => t('The status to set an issue to when a test result meets any of the following criteria.' . theme('item_list', $criteria)),
     '#default_value' => PIFT_FOLLOWUP,
-    '#element_validate' => array('pifr_admin_settings_form_validate_status'),
-    '#autocomplete_path' => 'admin/project/pift/status',
+    '#options' => project_issue_state(),
+    '#required' => TRUE,
   );
 
   $form['criteria'] = array(
@@ -79,17 +80,25 @@ function pift_admin_settings_form() {
   $form['criteria']['pift_regex'] = array(
     '#type' => 'textfield',
     '#title' => t('File regex'),
-    '#description' => t('Full regex pattern that must be matched for files to be tested.'),
+    '#description' => t('Full regex pattern that a filename must match for the file to be tested.'),
     '#default_value' => PIFT_REGEX,
     '#required' => TRUE,
   );
   $form['criteria']['pift_status'] = array(
-    '#type' => 'textfield',
+    '#type' => 'select',
+    '#multiple' => TRUE,
     '#title' => t('Issue statuses'),
     '#description' => t('List of issue status that an issue must be set to in order to test files.'),
-    '#default_value' => PIFT_STATUS,
-    '#element_validate' => array('pifr_admin_settings_form_validate_status'),
-    '#autocomplete_path' => 'admin/project/pift/status',
+    '#default_value' => variable_get('pift_status', array()),
+    '#options' => project_issue_state(),
+    '#required' => TRUE,
+  );
+  $form['criteria']['pift_tag'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Release tag regex'),
+    '#description' => t('MySQL compatible regex pattern that a release tag related to the issue must be match for a file to be tested.'),
+    '#default_value' => PIFT_TAG,
+    '#required' => TRUE,
   );
   $form['criteria']['pift_retest'] = array(
     '#type' => 'select',
@@ -120,32 +129,6 @@ function pift_admin_settings_form() {
 }
 
 /**
- * Validate the statuses to ensure they are valid.
- *
- * @param array $element Form element containing statuses.
- */
-function pifr_admin_settings_form_validate_status($element) {
-  $result = db_query('SELECT name
-                      FROM {project_issue_state}');
-  $availabe_states = array();
-  while ($name = db_result($result)) {
-    $availabe_states[] = $name;
-  }
-
-  $states = explode(',', $element['#value']);
-  if ($element['#name'] == 'pift_followup' && count($states) > 1) {
-    form_set_error($element['#name'], t('Only one status may be specified.'));
-    return;
-  }
-  foreach ($states as &$state) {
-    if (!in_array(trim($state), $availabe_states)) {
-      form_set_error($element['#name'], t('Invalid issue statuses.'));
-      break;
-    }
-  }
-}
-
-/**
  * Validate general settings.
  */
 function pift_admin_settings_form_validate($form, &$form_state) {
@@ -173,31 +156,4 @@ function pift_admin_settings_form_submit($form, &$form_state) {
   }
   // Remove the setting so it's not saved to {variable}.
   unset($form_state['values']['pift_reset_send_queue']);
-}
-
-/**
- * Provide autocomplete for project states.
- *
- * @param string $string Query string.
- */
-function pift_admin_status($string) {
-  $states = explode(',', $string);
-  $states = array_map('trim', $states);
-  $query = array_pop($states);
-
-  if ($query) {
-    $result = db_query("SELECT name
-                        FROM {project_issue_state}
-                        WHERE name LIKE '%s%%'
-                        LIMIT 10", $query);
-  }
-  else {
-    $result = FALSE;
-  }
-
-  $suggestions = array();
-  while ($suggestion = db_result($result)) {
-    $suggestions[implode(', ', array_merge($states, array($suggestion)))] = $suggestion;
-  }
-  drupal_json($suggestions);
 }

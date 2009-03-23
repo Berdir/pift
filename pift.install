@@ -76,14 +76,14 @@ function pift_schema() {
   $schema['pift_project'] = array(
     'description' => t('Store project testing preference.'),
     'fields' => array(
-      'project_nid' => array(
+      'pid' => array(
         'description' => t('Reference to project NID.'),
         'type' => 'serial',
         'unsigned' => TRUE,
         'not null' => TRUE,
       ),
     ),
-    'primary key' => array('project_nid'),
+    'primary key' => array('pid'),
   );
 
   return $schema;

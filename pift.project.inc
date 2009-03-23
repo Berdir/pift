@@ -10,12 +10,12 @@
 /**
  * Check if the project has testing enabled.
  *
- * @param integer $project_nid Project NID.
+ * @param integer $pid Project NID.
  * @return boolean Project has testing enabled.
  */
-function pift_project_enabled($project_nid) {
-  $nid = db_result(db_query('SELECT project_nid
+function pift_project_enabled($pid) {
+  $nid = db_result(db_query('SELECT pid
                              FROM {pift_project}
-                             WHERE project_nid = %d', $project_nid));
+                             WHERE pid = %d', $pid));
   return $nid !== FALSE;
 }
