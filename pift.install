@@ -108,13 +108,18 @@ function pift_uninstall() {
 
   $vars = array(
     'pift_frequency',
+    'pift_last',
     'pift_key',
     'pift_server',
     'pift_description',
     'pift_followup',
     'pift_regex',
     'pift_status',
+    'pift_core',
+    'pift_pid',
     'pift_retest',
+    'pift_delete',
+    'pift_last_cid',
   );
 
   foreach ($vars as $var) {
