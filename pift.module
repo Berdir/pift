@@ -17,9 +17,10 @@ define('PIFT_SERVER', variable_get('pift_server', ''));
 define('PIFT_DESCRIPTION', variable_get('pift_description', ''));
 define('PIFT_FOLLOWUP', variable_get('pift_followup', 'patch (code needs work)'));
 define('PIFT_REGEX', variable_get('pift_regex', '/(\.diff|\.patch)$/'));
-define('PIFT_TAG', variable_get('pift_tag', 'DRUPAL-7'));
+define('PIFT_PID', variable_get('pift_pid', -1));
 define('PIFT_RETEST', variable_get('pift_retest', 24 * 60 * 60));
 define('PIFT_DELETE', variable_get('pift_delete', FALSE));
+define('PIFT_LAST_CID', variable_get('pift_last_cid', 0));
 
 /*
  * Test status codes.
@@ -29,13 +30,19 @@ define('PIFT_STATUS_PASS', 2);
 define('PIFT_STATUS_FAIL', 3);
 define('PIFT_STATUS_RETEST', 4);
 
-/*
- * PIFR XML-RPC response codes.
- */
 if (!defined('PIFR_RESPONSE_ACCEPTED')) {
+  /*
+   * PIFR XML-RPC response codes.
+   */
   define('PIFR_RESPONSE_ACCEPTED', 1);
   define('PIFR_RESPONSE_INVALID_SERVER', 2);
   define('PIFR_RESPONSE_DENIED', 3);
+
+  /*
+   * Project type codes.
+   */
+  define('PIFR_SERVER_PROJECT_TYPE_CORE', 1);
+  define('PIFR_SERVER_PROJECT_TYPE_MODULE', 2);
 }
 
 /*
@@ -121,7 +128,14 @@ function pift_cron() {
       module_load_include('cron.inc', 'pift');
 
       pift_cron_retest();
-//      pift_send_file_data();
+
+      $cid = db_result(db_query('SELECT MAX(cid) FROM {cvs_messages}'));
+      if ($cid > PIFT_LAST_CID) {
+        pift_cron_test_release(PIFT_LAST_CID + 1, $cid);
+        variable_set('pift_last_cid', $cid);
+      }
+
+      pift_cron_queue_batch();
 
       variable_set('pift_last', $time);
     }
@@ -227,16 +241,6 @@ function pift_comment_load_node($comment) {
     $nid = is_array($comment['nid']) ? $comment['nid']['#value'] : $comment['nid'];
   }
   return node_load($nid);
-}
-
-/**
- * Empties the send queue.
- */
-function pift_reset_send_queue() {
-  variable_set('pift_last_sent', time());
-  // Remove all untested files.
-  // TODO: Do we really want to do this??
-  db_query("DELETE FROM {pift_data} WHERE status = %d", PIFT_UNTESTED);
 }
 
 /**

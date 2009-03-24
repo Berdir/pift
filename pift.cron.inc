@@ -42,8 +42,162 @@ function pift_cron_retest() {
             )
             AND last_tested < %d",
             array_merge(array(PIFT_STATUS_QUEUE), $sids, array(pift_test_release_regex(TRUE)), array($retest_time)));
+}
 
-  // TODO Query for releases when they are built nightly.
+/**
+ * Queue testing of releases/branches whenever a commit is made involving them.
+ *
+ * @param integer $min Min CID.
+ * @param integer $max Max CID.
+ */
+function pift_cron_test_release($min, $max) {
+  $result = db_query('SELECT nid AS pid, branch
+                      FROM {cvs_files}
+                      WHERE cid >= %d
+                      AND cid <= %d
+                      GROUP BY nid', $min, $max);
+  $commits = array();
+  while ($branch = db_fetch_array($result)) {
+    if (!isset($commits[$branch['pid']])) {
+      $commits[$branch['pid']] = array();
+    }
+    $commits[$branch['pid']][] = ($branch['branch'] ? $branch['branch'] : 'HEAD');
+  }
+
+  foreach ($commits as $pid => $branches) {
+    $rids = pift_cron_get_release($pid, $branches);
+    foreach ($rids as $rid) {
+      $test_id = db_result(db_query('SELECT test_id
+                                     FROM {pift_release}
+                                     WHERE rid = %d)', $rid));
+      if ($test_id) {
+        pift_test_requeue($test_id);
+      }
+      else if ($test_id !== 0) {
+        pift_test_add_release($rid);
+      }
+    }
+  }
+}
+
+/**
+ * Send the all test batches to testing server.
+ */
+function pift_cron_queue_batch() {
+  while ($batch = pift_cron_queue_batch_build()) {
+    // TODO Send batch.
+  }
+}
+
+/**
+ * Build the batch of tests to queue, using pifr.queue().
+ *
+ * @return array Batch of tests to queue.
+ */
+function pift_cron_queue_batch_build() {
+  $batch = array(
+    'branches' => array(),
+    'files' => array(),
+    'projects' => array(),
+  );
+  $projects = array();
+  $branches = array();
+
+  // Test all files that are marked as needs testing or have never been tested.
+  $result = db_query('SELECT pf.fid, f.filepath, u.nid AS u_nid, cu.nid AS c_nid, cu.cid AS c_cid
+                      FROM {pift_file} pf
+                      LEFT JOIN {pift_test} t
+                        ON pf.test_id = t.test_id
+                      JOIN {files} f
+                        ON pf.fid = f.fid
+                      LEFT JOIN {upload} u
+                        ON pf.fid = u.fid
+                      LEFT JOIN {comment_upload} cu
+                        ON pf.fid = cu.fid
+                      WHERE (t.status = 1 OR t.status IS NULL)');
+  while ($file = db_fetch_array($result)) {
+    $node_file = ($file['u_nid'] ? TRUE : FALSE);
+    $issue = node_load(($node_file ? $file['u_nid'] : $file['c_nid']));
+
+    $batch['files'][] = array(
+      'branch_nid' => $issue->project_issue['rid'],
+      'file_url' => url($file['filepath']),
+      'issue_nid' => $issue->nid,
+      'issue_cid' => ($file['c_cid'] ? $file['c_cid'] : 0),
+    );
+    $branches[$issue->project_issue['rid']] = FALSE; // Do not test unless commit found.
+  }
+
+  // Test the branches that are marked as needs testing or have never been tested.
+  $result = db_query('SELECT *
+                      FROM {pift_release} pr
+                      LEFT JOIN {pift_test} t
+                        ON pr.test_id = t.test_id
+                      WHERE (t.status = 1 OR t.status IS NULL)');
+  while ($branch = db_fetch_array($result)) {
+    $branches[$branch['rid']] = TRUE;
+  }
+
+  // Include branch data for all dependency branches and those that require testing.
+  foreach ($branches as $rid => $test) {
+    $branch = node_load($rid);
+
+    $item = array(
+      'branch_nid' => $branch->nid,
+      'project_nid' => $branch->project_release['pid'],
+      'identifier' => $branch->project_release['tag'],
+      'test' => $test,
+    );
+    if (PIFT_PID != $item['project_nid']) {
+      // Branch is not core branch so find out what core branch it is compatible with.
+      if (preg_match('/DRUPAL-(\d+)', $item['identifier'], $match)) {
+        // Get the core branch compatible with the numeric version.
+        $rids = pift_cron_get_release($pid, array($match[1]));
+        if ($rids) {
+          $item['core_branch_nid'] = $rid[0];
+          $branches[] = $rid[0];
+        }
+      }
+    }
+
+    $batch['branches'][] = $item;
+    $projects[] = $branch->project_release['pid'];
+  }
+
+  // Include project data for all branches.
+  $repositories = cvs_get_repository_info();
+  $projects = array_unique($projects);
+  foreach ($projects as $project) {
+    $project = node_load($project);
+    $batch['projects'][] = array(
+      'project_nid' => $project->nid,
+      'name' => $project->title,
+      'type' => ($project->nid == PIFT_PID ? PIFR_SERVER_PROJECT_TYPE_CORE : PIFR_SERVER_PROJECT_TYPE_MODULE),
+      'repository_type' => 'cvs',
+      'repository_url' => $repositories[$project->cvs['repository']]->root . $project->cvs['directory'],
+    );
+  }
+  return $batch;
+}
+
+/**
+ * Get the release NIDs that correspond to the specified project and tags.
+ *
+ * @param integer $pid Project NID.
+ * @param array $tags List of tags.
+ * @return array Release NIDs that match.
+ */
+function pift_cron_get_release($pid, $tags) {
+  $result = db_query('SELECT nid
+                      FROM {project_release_nodes}
+                      WHERE pid = %d
+                      AND tag IN (' . implode(',', array_fill(0, count($tags), "'%s'")) . ')',
+                      array_merge(array($pid), $tags));
+  $rids = array();
+  while ($rid = db_result($result)) {
+    $rids[] = $rid;
+  }
+  return $rids;
 }
 
 /**

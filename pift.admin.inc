@@ -103,7 +103,23 @@ function pift_admin_settings_form() {
     ),
     '#default_value' => variable_get('pift_core', array()),
   );
-  $form['criteria']['pift_retest'] = array(
+
+  $form['advanced'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Advanced'),
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
+  );
+  $project = node_load(PIFT_PID);
+  $form['advanced']['pift_pid'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Core'),
+    '#description' => t('Project that contains the core code required by modules to function.'),
+    '#autocomplete_path' => 'project/autocomplete/issue/project',
+    '#default_value' => ($project ? $project->title : ''),
+    '#required' => TRUE,
+  );
+  $form['advanced']['pift_retest'] = array(
     '#type' => 'select',
     '#title' => t('Re-test interval'),
     '#description' => t('Number of days to wait before re-testing a previously passed file, or -1 to prevent re-testing.'),
@@ -118,14 +134,8 @@ function pift_admin_settings_form() {
     '#element_validate' => array('pift_is_numeric_validate'),
     '#required' => TRUE,
   );
-  $form['criteria']['pift_retest']['#options'] = drupal_map_assoc($form['criteria']['pift_retest']['#options'], 'format_interval');
-  $form['criteria']['pift_retest']['#options'][-1] = t('Disabled');
-
-  $form['pift_reset_send_queue'] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Reset sending queue'),
-    '#description' => t('If selected, the sending queue will be cleared, and only files submitted from the time of the reset will be sent.'),
-  );
+  $form['advanced']['pift_retest']['#options'] = drupal_map_assoc($form['advanced']['pift_retest']['#options'], 'format_interval');
+  $form['advanced']['pift_retest']['#options'][-1] = t('Disabled');
 
   $form['#submit'] = array('pift_admin_settings_form_submit');
   return system_settings_form($form);
@@ -149,14 +159,13 @@ function pift_admin_settings_form_validate($form, &$form_state) {
 }
 
 /**
- * Handles extra submission tasks on the admin settings page.
+ * Query pid using project title.
  */
 function pift_admin_settings_form_submit($form, &$form_state) {
-  // Reset the queue.
-  if ($form_state['values']['pift_reset_send_queue']) {
-    pift_reset_send_queue();
-    drupal_set_message(t('Send queue reset.'));
-  }
-  // Remove the setting so it's not saved to {variable}.
-  unset($form_state['values']['pift_reset_send_queue']);
+  $form_state['values']['pift_pid'] = db_result(
+    db_query("SELECT nid
+              FROM {node}
+              WHERE title = '%s'
+              AND type = '%s'", $form_state['values']['pift_pid'], 'project_project')
+  );
 }

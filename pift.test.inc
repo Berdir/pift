@@ -166,26 +166,29 @@ function pift_test_add_files(array $files) {
  * @param array $file File to add.
  */
 function pift_test_add_file(array $file) {
-  db_query('INSERT INTO {pift_test} (status)
-            VALUES (%d)', PIFT_STATUS_QUEUE);
-  $test_id = db_last_insert_id('pift_test', 'test_id');
-
-  db_query('INSERT INTO {pift_file} (fid, test_id)
-            VALUES (%d, %d)', $file['fid'], $test_id);
+  db_query('INSERT INTO {pift_file} (fid)
+            VALUES (%d)', $file['fid']);
 }
 
 /**
  * Add a release to the test tables.
  *
- * @param array $release Release to add.
+ * @param integer $rid Release ID.
  */
-function pift_test_add_release(array $release) {
-  db_query('INSERT INTO {pift_test} (status)
-            VALUES (%d)', PIFT_STATUS_QUEUE);
-  $test_id = db_last_insert_id('pift_test', 'test_id');
+function pift_test_add_release($rid) {
+  db_query('INSERT INTO {pift_release} (rid)
+            VALUES (%d)', $release['rid']);
+}
 
-  db_query('INSERT INTO {pift_release} (rid, test_id)
-            VALUES (%d, %d)', $release['rid'], $test_id);
+//function pift_test_add($test_id, $type, $id) {
+//  db_query('INSERT INTO {pift_test} (test_id, status)
+//            VALUES (%d)', $test_id, PIFT_STATUS_QUEUE);
+//}
+
+function pift_test_requeue($test_id) {
+  db_query('UPDATE {pift_test}
+            SET status = %d
+            WHERE test_id = %d', PIFT_STATUS_QUEUE, $test_id);
 }
 
 /**
