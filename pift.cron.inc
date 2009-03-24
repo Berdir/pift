@@ -41,7 +41,7 @@ function pift_cron_retest() {
               AND r.tag REGEXP '%s'
             )
             AND last_tested < %d",
-            array_merge(array(PIFT_STATUS_QUEUE), $sids, array(PIFT_TAG), array($retest_time)));
+            array_merge(array(PIFT_STATUS_QUEUE), $sids, array(pift_test_release_regex(TRUE)), array($retest_time)));
 
   // TODO Query for releases when they are built nightly.
 }

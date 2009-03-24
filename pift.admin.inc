@@ -93,18 +93,20 @@ function pift_admin_settings_form() {
     '#options' => project_issue_state(),
     '#required' => TRUE,
   );
-  $form['criteria']['pift_tag'] = array(
-    '#type' => 'textfield',
-    '#title' => t('Release tag regex'),
-    '#description' => t('MySQL compatible regex pattern that a release tag related to the issue must be match for a file to be tested.'),
-    '#default_value' => PIFT_TAG,
-    '#required' => TRUE,
+  $form['criteria']['pift_core'] = array(
+    '#type' => 'checkboxes',
+    '#title' => t('Core branches'),
+    '#description' => t('Drupal core branches that are to be tested. Issues pertaining to them will have files tested.'),
+    '#options' => array(
+      6 => t('6.x'),
+      7 => t('7.x'),
+    ),
+    '#default_value' => variable_get('pift_core', array()),
   );
   $form['criteria']['pift_retest'] = array(
     '#type' => 'select',
     '#title' => t('Re-test interval'),
     '#description' => t('Number of days to wait before re-testing a previously passed file, or -1 to prevent re-testing.'),
-    '#default_value' => PIFT_RETEST,
     '#options' => array(
       -1,
       24 * 60 * 60,
@@ -112,6 +114,7 @@ function pift_admin_settings_form() {
       72 * 60 * 60,
       96 * 60 * 60,
     ),
+    '#default_value' => PIFT_RETEST,
     '#element_validate' => array('pift_is_numeric_validate'),
     '#required' => TRUE,
   );

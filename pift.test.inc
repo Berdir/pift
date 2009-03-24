@@ -122,9 +122,8 @@ function pift_test_check_criteria_issue($node) {
     return FALSE;
   }
 
-  $supported_branches = array('DRUPAL-6');
   $release = node_load($node->project_issue['rid']);
-  if (!preg_match(PIFT_TAG, $release->project_release['tag'])) {
+  if (!preg_match(pift_test_release_regex(FALSE), $release->project_release['tag'])) {
     return FALSE;
   }
 
@@ -223,4 +222,16 @@ function pift_test_add_previous_files($nid) {
       pift_test_add_file($file);
     }
   }
+}
+
+/**
+ * Generate a regular expression to match the release tags per specified core
+ * versions.
+ *
+ * @param boolean $mysql_compatible Generate MySQL compatible regular expression.
+ * @return string Regular expression.
+ */
+function pift_test_release_regex($mysql_compatible) {
+  $versions = implode('|', variable_get('pift_core', array()));
+  return $mysql_compatible ? "DRUPAL-($versions)" : "/DRUPAL\-($versions)/";
 }
