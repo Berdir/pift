@@ -232,6 +232,15 @@ function pift_test_add_previous_files($nid) {
  * @return string Regular expression.
  */
 function pift_test_release_regex($mysql_compatible) {
-  $versions = implode('|', variable_get('pift_core', array()));
-  return $mysql_compatible ? "DRUPAL-($versions)" : "/DRUPAL\-($versions)/";
+  $regex = '';
+  $branches = variable_get('pift_core', array());
+  sort($branches);
+
+  if (end($branches) == 7) {
+    $regex .= 'HEAD|';
+    array_pop($branches);
+  }
+
+  $branches = implode('|', $branches);
+  return $mysql_compatible ? "{$regex}DRUPAL-($branches)" : "/{$regex}DRUPAL\-($branches)/";
 }
