@@ -245,35 +245,6 @@ function pift_comment_load_node($comment) {
 }
 
 /**
- * Manually requests patch re-testing.
- */
-function pift_request_retest_confirm_form_submit($form, &$form_state) {
-  $file_info = $form['#file_info'];
-  // Check issue filters here to provide an intelligent user
-  // message to the user if the filters don't pass.
-  if (pift_check_issue_filters($file_info->nid)) {
-    // Mark for re-testing.  Set last tested timestamp to zero here
-    // so the file doesn't have to wait the whole PIFT_RETEST period
-    // to be sent for testing -- the timestamp will be updated as soon
-    // as the file is sent anyways.
-    db_query("UPDATE {pift_data} SET display_data = '%s', status = %d, timestamp = %d WHERE ftid = %d", 'manual re-test', PIFT_STATUS_QUEUE, 0, $file_info->ftid);
-    // In case the file was removed from the testable files list
-    // from the time it was submitted.
-    if (db_affected_rows()) {
-      drupal_set_message(t('%file has been submitted for re-testing -- results will be posted when testing completes.', array('%file' => $file_info->filename)));
-    }
-    else {
-      drupal_set_message(t('Invalid file submitted.'), 'error');
-    }
-  }
-  else {
-    drupal_set_message(t('%file is not currently eligible for re-testing, and was not submitted.', array('%file' => $file_info->filename)), 'error');
-  }
-
-  $form_state['redirect'] = "node/$file_info->nid";
-}
-
-/**
  * Checks a file to see if an auto status change is needed.
  *
  * Only files that have failed testing are eligible.  If the

@@ -73,7 +73,7 @@ function pift_pages_retest_confirm_form(&$form_state, $test_id) {
 
   if ($test) {
     $form = array();
-    $form['#test_id'] = array(
+    $form['test_id'] = array(
       '#type' => 'value',
       '#value' => $test_id,
     );
@@ -94,15 +94,41 @@ function pift_pages_retest_confirm_form(&$form_state, $test_id) {
 }
 
 /**
+ * Re-queue test if it still meets are criteria.
+ */
+function pift_pages_retest_confirm_form_submit($form, &$form_state) {
+  $test = pift_test_get($form_state['values']['test_id']);
+  if (pift_test_check_criteria_file($test)) {
+    db_query('UPDATE {pift_test}
+              SET status = %d,
+              timestamp = %d
+              WHERE test_id = %d', PIFT_STATUS_QUEUE, time(), $test['test_id']);
+
+    if (db_affected_rows()) {
+      drupal_set_message(t('%file has been submitted for re-testing. Please be patient while you wait for results.',
+                           array('%file' => $test['filename'])));
+    }
+    else {
+      drupal_set_message(t('Invalid test.'), 'error');
+    }
+  }
+  else {
+    drupal_set_message(t('%file is not currently eligible for re-testing.',
+                         array('%file' => $test['filename'])), 'error');
+  }
+}
+
+/**
  * Theme attachments into a table with test results.
  *
  * @param array $files List of file attachments.
  * @return string HTML output.
  */
 function theme_pift_attachments(array $files) {
-  $header = array(t('Attachment'), t('Size'), t('Test results'));
+  $header = array(t('Attachment'), t('Size'), t('Test results'), t('Operations'));
   $rows = array();
   foreach ($files as $file) {
+    $class = '';
     $row = array();
     $row[] = l($file['filename'], $file['filepath']);
     $row[] = format_size($file['filesize']);
@@ -116,13 +142,24 @@ function theme_pift_attachments(array $files) {
       }
       elseif ($file['status'] == PIFT_STATUS_QUEUE && $file['message']) {
         $class = 'pift-retest';
+        $row[count($row) - 1] = '<em>' . t('Queued for re-testing') . '</em>';
       }
-      $rows[] = array('class' => 'pift-passed', 'data' => $row);
     }
     else {
       $row[] = '<em>' . t('Ignored') . '</em>';
-      $rows[] = $row;
     }
+
+    $operations = array();
+    if ($file['status'] > PIFT_STATUS_QUEUE) {
+      $operations[] = l(t('Re-test'), 'pift/retest/' . $file['test_id']);
+    }
+//    TODO Implement later.
+//    if ($file['test_id']) {
+//      $operations[] = l(t('Try now'), 'pift/trynow/' . $file['test_id']);
+//    }
+    $row[] = ($operations ? implode(' | ', $operations) : '<em>' . t('None')) . '</em>';
+
+    $rows[] = array('class' => $class, 'data' => $row);
   }
   return theme('table', $header, $rows);
 }

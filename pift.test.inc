@@ -14,7 +14,7 @@
  * @return array Test data.
  */
 function pift_test_get($test_id) {
-  return db_fetch_array(db_query('SELECT *
+  return db_fetch_array(db_query('SELECT f.*, r.*, pf.test_id AS has_test, t.*
                                    FROM {pift_test} t
                                    LEFT JOIN {pift_file} pf
                                      ON t.test_id = pf.test_id
@@ -23,7 +23,7 @@ function pift_test_get($test_id) {
                                    LEFT JOIN {files} f
                                      ON pf.fid = f.fid
                                    LEFT JOIN {project_release_nodes} r
-                                     ON pr.release_nid = r.nid
+                                     ON pr.rid = r.nid
                                    WHERE t.test_id = %d', $test_id));
 }
 
