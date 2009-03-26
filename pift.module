@@ -28,7 +28,6 @@ define('PIFT_LAST_CID', variable_get('pift_last_cid', 0));
 define('PIFT_STATUS_QUEUE', 1);
 define('PIFT_STATUS_PASS', 2);
 define('PIFT_STATUS_FAIL', 3);
-define('PIFT_STATUS_RETEST', 4);
 
 if (!defined('PIFR_RESPONSE_ACCEPTED')) {
   /*
@@ -257,7 +256,7 @@ function pift_request_retest_confirm_form_submit($form, &$form_state) {
     // so the file doesn't have to wait the whole PIFT_RETEST period
     // to be sent for testing -- the timestamp will be updated as soon
     // as the file is sent anyways.
-    db_query("UPDATE {pift_data} SET display_data = '%s', status = %d, timestamp = %d WHERE ftid = %d", 'manual re-test', PIFT_STATUS_RETEST, 0, $file_info->ftid);
+    db_query("UPDATE {pift_data} SET display_data = '%s', status = %d, timestamp = %d WHERE ftid = %d", 'manual re-test', PIFT_STATUS_QUEUE, 0, $file_info->ftid);
     // In case the file was removed from the testable files list
     // from the time it was submitted.
     if (db_affected_rows()) {

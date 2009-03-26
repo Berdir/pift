@@ -114,7 +114,7 @@ function theme_pift_attachments(array $files) {
       elseif ($file['status'] == PIFT_STATUS_FAIL) {
         $class = 'pift-fail';
       }
-      elseif ($file['status'] == PIFT_STATUS_RETEST) {
+      elseif ($file['status'] == PIFT_STATUS_QUEUE && $file['message']) {
         $class = 'pift-retest';
       }
       $rows[] = array('class' => 'pift-passed', 'data' => $row);
