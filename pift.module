@@ -398,30 +398,3 @@ function theme_pift_auto_close_message($last_file) {
 
   return $output;
 }
-
-/**
- * Records XML-RPC errors communicating to test servers.
- *
- * @param $server
- *   An associative array of server information, as follows:
- *     'user' => The user logging in.
- *     'xmlrpc_url' => The XML-RPC URL of the test server.
- *     'url'  => The Drupal base URL of the server sending the data.
- *
- * @param $error_code
- *   Optional. A string representing a validation error type.
- */
-function pift_xmlrpc_error_handler($server, $error_code = NULL) {
-  global $base_url;
-
-  $t_args = array('%url' => $base_url, '%xmlrpc_url' => $server['xmlrpc_url']);
-
-  switch ($error_code) {
-    case PIFR_RESPONSE_INVALID_SERVER:
-      watchdog('project_remote', 'Unable to log in %url to %xmlrpc_url -- invalid server key.', $t_args, WATCHDOG_ERROR);
-      break;
-    default:
-      watchdog('project_remote', 'XML-RPC error communicating with %xmlrpc_url', $t_args, WATCHDOG_ERROR);
-      break;
-  }
-}
