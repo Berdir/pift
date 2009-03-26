@@ -180,10 +180,29 @@ function pift_test_add_release($rid) {
             VALUES (%d)', $release['rid']);
 }
 
-//function pift_test_add($test_id, $type, $id) {
-//  db_query('INSERT INTO {pift_test} (test_id, status)
-//            VALUES (%d)', $test_id, PIFT_STATUS_QUEUE);
-//}
+/**
+ * Update the test and related detail record with the assigned test ID and
+ * current timestamp.
+ *
+ * @param integer $test_id Test ID.
+ * @param string $type Test type.
+ * @param integer $id ID for specified test type.
+ */
+function pift_test_add($test_id, $type, $id) {
+  db_query('REPLACE INTO {pift_test} (test_id, status, timestamp)
+            VALUES (%d, %d, %d)', $test_id, PIFT_STATUS_QUEUE, time());
+
+  if ($type == 'branch') {
+    db_query('UPDATE {pift_release}
+              SET test_id = %d
+              WHERE rid = %d', $test_id, $id);
+  }
+  else if ($type == 'file') {
+    db_query('UPDATE {pift_file}
+              SET test_id = %d
+              WHERE fid = %d', $test_id, $id);
+  }
+}
 
 function pift_test_requeue($test_id) {
   db_query('UPDATE {pift_test}

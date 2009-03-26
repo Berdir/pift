@@ -84,15 +84,39 @@ function pift_cron_test_release($min, $max) {
  * Send the all test batches to testing server.
  */
 function pift_cron_queue_batch() {
-//  while ($batch = pift_cron_queue_batch_build()) {
-//    // TODO Send batch.
-//  }
+  while ((list($files, $batch) = pift_cron_queue_batch_build()) && $batch['projects']) {
+    $response = xmlrpc(PIFT_SERVER . '/xmlrpc.php', 'pifr.queue', PIFT_KEY, $batch);
+    if ($response === FALSE) {
+      watchdog('pift', 'Failed to send test queue requests to server.', array(), WATCHDOG_ERROR);
+    }
+    elseif (isset($response['response'])) {
+      watchdog('pift', 'Test queue request did not succeed: @code.', array('@code' => $response['response']), WATCHDOG_ERROR);
+    }
+    elseif (isset($response['branches']) && isset($response['files'])) {
+      // Store test records using assigned test IDs.
+      foreach ($batch['branches'] as $key => $branch) {
+        if (isset($response['branches'][$key])) {
+          pift_test_add($response['branches'][$key], 'branch', $batch['branches'][$key]['branch_nid']);
+        }
+      }
+
+      foreach ($response['files'] as $key => $file) {
+        if (isset($response['files'][$key])) {
+          pift_test_add($response['files'][$key], 'file', $files[$key]);
+        }
+      }
+    }
+    else {
+      watchdog('pift', 'Invalid response to test queue request.', array(), WATCHDOG_ERROR);
+    }
+    break;
+  }
 }
 
 /**
  * Build the batch of tests to queue, using pifr.queue().
  *
- * @return array Batch of tests to queue.
+ * @return array List of file IDs and batch of tests to queue.
  */
 function pift_cron_queue_batch_build() {
   $batch = array(
@@ -100,8 +124,9 @@ function pift_cron_queue_batch_build() {
     'files' => array(),
     'projects' => array(),
   );
-  $projects = array();
   $branches = array();
+  $files = array();
+  $projects = array();
 
   // Test all files that are marked as needs testing or have never been tested.
   $result = db_query('SELECT pf.fid, f.filepath, u.nid AS u_nid, cu.nid AS c_nid, cu.cid AS c_cid
@@ -125,6 +150,7 @@ function pift_cron_queue_batch_build() {
       'issue_nid' => $issue->nid,
       'issue_cid' => ($file['c_cid'] ? $file['c_cid'] : 0),
     );
+    $files[] = $file['fid'];
     $branches[$issue->project_issue['rid']] = FALSE; // Do not test unless commit found.
   }
 
@@ -150,7 +176,7 @@ function pift_cron_queue_batch_build() {
     );
     if (PIFT_PID != $item['project_nid']) {
       // Branch is not core branch so find out what core branch it is compatible with.
-      if (preg_match('/DRUPAL-(\d+)', $item['identifier'], $match)) {
+      if (preg_match('/DRUPAL-(\d+)/', $item['identifier'], $match)) {
         // Get the core branch compatible with the numeric version.
         $rids = pift_cron_get_release($pid, array($match[1]));
         if ($rids) {
@@ -177,7 +203,7 @@ function pift_cron_queue_batch_build() {
       'repository_url' => $repositories[$project->cvs['repository']]->root . $project->cvs['directory'],
     );
   }
-  return $batch;
+  return array($files, $batch);
 }
 
 /**
