@@ -211,10 +211,12 @@ function pift_comment(&$comment, $op) {
       }
       break;
     case 'insert':
-      if (!empty($comment->files) && pift_test_check_criteria_issue($node)) {
-        // Add attachments to this comment to the send queue.
-        $files = comment_upload_load_files($comment['cid']);
-        pift_test_add_files($files);
+      if (pift_test_check_criteria_issue($node)) {
+        if (!empty($comment->files)) {
+          // Add attachments to this comment to the send queue.
+          $files = comment_upload_load_files($comment['cid']);
+          pift_test_add_files($files);
+        }
 
         // Add previously submitted files if issue state changes.
         pift_test_add_previous_files($comment['nid']);

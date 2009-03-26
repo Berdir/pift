@@ -34,7 +34,7 @@ function pift_test_get($test_id) {
  * @return array List of files and test data.
  */
 function pift_test_get_files_comment($cid) {
-  $result = db_query('SELECT f.*, cu.*, pf.test_id, t.*
+  $result = db_query('SELECT f.*, cu.*, pf.test_id AS has_test, t.*
                       FROM {files} f
                       INNER JOIN {comment_upload} cu
                         ON f.fid = cu.fid
@@ -58,7 +58,7 @@ function pift_test_get_files_comment($cid) {
  * @return array List of files and test data.
  */
 function pift_test_get_files_comment_all($nid) {
-  $result = db_query('SELECT f.*, cu.*, pf.test_id, t.*
+  $result = db_query('SELECT f.*, cu.*, pf.test_id AS has_test, t.*
                       FROM {files} f
                       INNER JOIN {comment_upload} cu
                         ON f.fid = cu.fid
@@ -83,7 +83,7 @@ function pift_test_get_files_comment_all($nid) {
  * @return array List of files and test data.
  */
 function pift_test_get_files_node($nid) {
-  $result = db_query('SELECT f.*, u.*, pf.test_id, t.*
+  $result = db_query('SELECT f.*, u.*, pf.test_id AS has_test, t.*
                       FROM {files} f
                       INNER JOIN {upload} u
                         ON f.fid = u.fid
@@ -219,9 +219,10 @@ function pift_test_delete_files() {
  */
 function pift_test_add_previous_files($nid) {
   $files = pift_test_get_files_node_all($nid);
+  dpm($files);
   foreach ($files as $file) {
     $file = (array) $file;
-    if (!$file['test_id'] && pift_test_check_criteria_file($file)) {
+    if ($file['has_test'] === NULL && pift_test_check_criteria_file($file)) {
       pift_test_add_file($file);
     }
   }

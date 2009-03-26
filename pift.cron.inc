@@ -84,9 +84,9 @@ function pift_cron_test_release($min, $max) {
  * Send the all test batches to testing server.
  */
 function pift_cron_queue_batch() {
-  while ($batch = pift_cron_queue_batch_build()) {
-    // TODO Send batch.
-  }
+//  while ($batch = pift_cron_queue_batch_build()) {
+//    // TODO Send batch.
+//  }
 }
 
 /**

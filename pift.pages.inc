@@ -106,8 +106,8 @@ function theme_pift_attachments(array $files) {
     $row = array();
     $row[] = l($file['filename'], $file['filepath']);
     $row[] = format_size($file['filesize']);
-    if ($file['test_id']) {
-      $row[] = $file['status'] > PIFT_STATUS_QUEUE ? check_plain($file['message']) : '<em>' . t('Queued for testing.') . '</em>';
+    if ($file['has_test'] !== NULL) {
+      $row[] = $file['status'] > PIFT_STATUS_QUEUE ? check_plain($file['message']) : '<em>' . t('Queued for testing') . '</em>';
       if ($file['status'] == PIFT_STATUS_PASS) {
         $class = 'pift-pass';
       }
@@ -120,7 +120,7 @@ function theme_pift_attachments(array $files) {
       $rows[] = array('class' => 'pift-passed', 'data' => $row);
     }
     else {
-      $row[] = '<em>' . t('Ignored.') . '</em>';
+      $row[] = '<em>' . t('Ignored') . '</em>';
       $rows[] = $row;
     }
   }
