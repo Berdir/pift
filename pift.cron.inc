@@ -40,7 +40,7 @@ function pift_cron_retest() {
               WHERE pi.sid IN (" . implode(',', array_fill(0, count($sids), '%d')) . ")
               AND r.tag REGEXP '%s'
             )
-            AND last_tested < %d",
+            AND timestamp < %d",
             array_merge(array(PIFT_STATUS_QUEUE), $sids, array(pift_test_release_regex(TRUE)), array($retest_time)));
 }
 

@@ -26,8 +26,8 @@ function pift_schema() {
         'size' => 'big',
         'not null' => TRUE,
       ),
-      'last_tested' => array(
-        'description' => t('Timestamp of last time tested.'),
+      'timestamp' => array(
+        'description' => t('Timestamp of last change.'),
         'type' => 'int',
         'not null' => TRUE,
         'default' => 0,
@@ -36,7 +36,7 @@ function pift_schema() {
     'primary key' => array('test_id'),
     'indexes' => array(
       'status' => array('status'),
-      'last_tested' => array('last_tested'),
+      'timestamp' => array('timestamp'),
     ),
   );
   $schema['pift_file'] = array(
