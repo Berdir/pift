@@ -141,7 +141,9 @@ function pift_cron() {
         variable_set('pift_last_cid', $cid);
       }
 
-      pift_cron_queue_batch($time);
+      pift_cron_queue_batch();
+
+      pift_cron_retreive_results();
 
       variable_set('pift_last', $time);
     }

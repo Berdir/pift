@@ -226,3 +226,39 @@ function pift_cron_get_release($pid, $tags) {
   }
   return $rids;
 }
+
+/**
+ * Retrieve test results since the last cron run.
+ */
+function pift_cron_retreive_results() {
+  $next = PIFT_LAST;
+  do {
+    $response = xmlrpc(PIFT_SERVER . '/xmlrpc.php', 'pifr.retrieve', PIFT_KEY, $next);
+    $next = FALSE;
+
+    if ($response === FALSE) {
+      watchdog('pift', 'Failed to retrieve test results from to server: @message',
+                       array('@message' => xmlrpc_error_msg()), WATCHDOG_ERROR);
+    }
+    elseif (isset($response['response'])) {
+      watchdog('pift', 'Retrieval of test results did not succeed: @code.',
+               array('@code' => $response['response']), WATCHDOG_ERROR);
+    }
+    elseif (isset($response['results'])) {
+      foreach ($response['results'] as $result) {
+        db_query("UPDATE {pift_test}
+                  SET status = %d,
+                  message = '%s',
+                  timestamp = %d
+                  WHERE test_id = %d",
+                  $result['pass'] ? PIFT_STATUS_PASS : PIFT_STATUS_FAIL, $result['message'], time(), $result['test_id']);
+      }
+
+      $next = isset($response['next']) ? $response['next'] : FALSE;
+    }
+    else {
+      watchdog('pift', 'Invalid response to retrieval of test resutls.', array(), WATCHDOG_ERROR);
+    }
+  }
+  while ($next);
+}
