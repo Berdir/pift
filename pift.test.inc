@@ -14,16 +14,18 @@
  * @return array Test data.
  */
 function pift_test_get($test_id) {
-  return db_fetch_array(db_query('SELECT f.*, r.*, pf.test_id AS has_test, t.*
+  return db_fetch_array(db_query('SELECT t.*, pr.*, pf.*, f.*, IF(u.nid IS NULL, cu.nid, u.nid) AS nid, cu.cid
                                    FROM {pift_test} t
-                                   LEFT JOIN {pift_file} pf
-                                     ON t.test_id = pf.test_id
                                    LEFT JOIN {pift_release} pr
                                      ON t.test_id = pr.test_id
+                                   LEFT JOIN {pift_file} pf
+                                     ON t.test_id = pf.test_id
                                    LEFT JOIN {files} f
                                      ON pf.fid = f.fid
-                                   LEFT JOIN {project_release_nodes} r
-                                     ON pr.rid = r.nid
+                                   LEFT JOIN {upload} u
+                                     ON pf.fid = u.fid
+                                   LEFT JOIN {comment_upload} cu
+                                     ON pf.fid = cu.fid
                                    WHERE t.test_id = %d', $test_id));
 }
 

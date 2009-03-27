@@ -71,17 +71,23 @@ function pift_pages_retest_confirm_form(&$form_state, $test_id) {
   $test = pift_test_get($test_id);
 
   if ($test) {
+    $file = (bool) $test['fid'];
+
     $form = array();
     $form['test_id'] = array(
       '#type' => 'value',
       '#value' => $test_id,
     );
+    $form['test_title'] = array(
+      '#type' => 'value',
+      '#value' => $file ? $test['filename'] : project_release_get_version((object) $test),
+    );
+    $form['#redirect'] = 'node/' . ($file ? $test['nid'] : $test['rid']);
 
-    $title = $test['fid'] ? $test['filename'] : project_release_get_version((object) $test);
     return confirm_form(
       $form,
-      t('Are you sure you want to request that %title be re-tested?', array('%title' => $title)),
-      '', // TODO
+      t('Are you sure you want to request that %title be re-tested?', array('%title' => $form['test_title']['#value'])),
+      $form['#redirect'],
       t('Once requested the test will be re-queued and results will be updated once the re-test has finished.'),
       t('Re-test'),
       t('Cancel')
@@ -97,23 +103,24 @@ function pift_pages_retest_confirm_form(&$form_state, $test_id) {
  */
 function pift_pages_retest_confirm_form_submit($form, &$form_state) {
   $test = pift_test_get($form_state['values']['test_id']);
-  if (pift_test_check_criteria_file($test)) {
+
+  if ($test['status'] > PIFT_STATUS_SENT && pift_test_check_criteria_file($test)) {
     db_query('UPDATE {pift_test}
               SET status = %d,
               timestamp = %d
               WHERE test_id = %d', PIFT_STATUS_QUEUE, time(), $test['test_id']);
 
     if (db_affected_rows()) {
-      drupal_set_message(t('%file has been submitted for re-testing. Please be patient while you wait for results.',
-                           array('%file' => $test['filename'])));
+      drupal_set_message(t('%title has been submitted for re-testing. Please be patient while you wait for results.',
+                           array('%title' => $form_state['values']['test_title'])));
     }
     else {
       drupal_set_message(t('Invalid test.'), 'error');
     }
   }
   else {
-    drupal_set_message(t('%file is not currently eligible for re-testing.',
-                         array('%file' => $test['filename'])), 'error');
+    drupal_set_message(t('%title is not currently eligible for re-testing.',
+                         array('%title' => $form_state['values']['test_title'])), 'error');
   }
 }
 
