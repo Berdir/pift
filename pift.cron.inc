@@ -109,7 +109,6 @@ function pift_cron_queue_batch() {
     else {
       watchdog('pift', 'Invalid response to test queue request.', array(), WATCHDOG_ERROR);
     }
-    break;
   }
 }
 
@@ -139,7 +138,8 @@ function pift_cron_queue_batch_build() {
                         ON pf.fid = u.fid
                       LEFT JOIN {comment_upload} cu
                         ON pf.fid = cu.fid
-                      WHERE (t.status = 1 OR t.status IS NULL)');
+                      WHERE (t.status = %d OR t.status IS NULL)
+                      LIMIT %d', PIFT_STATUS_QUEUE, PIFT_XMLRPC_MAX);
   while ($file = db_fetch_array($result)) {
     $node_file = ($file['u_nid'] ? TRUE : FALSE);
     $issue = node_load(($node_file ? $file['u_nid'] : $file['c_nid']));
@@ -159,7 +159,8 @@ function pift_cron_queue_batch_build() {
                       FROM {pift_release} pr
                       LEFT JOIN {pift_test} t
                         ON pr.test_id = t.test_id
-                      WHERE (t.status = 1 OR t.status IS NULL)');
+                      WHERE (t.status = %d OR t.status IS NULL)
+                      LIMIT %d', PIFT_STATUS_QUEUE, PIFT_XMLRPC_MAX);
   while ($branch = db_fetch_array($result)) {
     $branches[$branch['rid']] = TRUE;
   }

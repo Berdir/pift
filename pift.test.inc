@@ -190,7 +190,7 @@ function pift_test_add_release($rid) {
  */
 function pift_test_add($test_id, $type, $id) {
   db_query('REPLACE INTO {pift_test} (test_id, status, timestamp)
-            VALUES (%d, %d, %d)', $test_id, PIFT_STATUS_QUEUE, time());
+            VALUES (%d, %d, %d)', $test_id, PIFT_STATUS_SENT, time());
 
   if ($type == 'branch') {
     db_query('UPDATE {pift_release}
@@ -238,7 +238,6 @@ function pift_test_delete_files() {
  */
 function pift_test_add_previous_files($nid) {
   $files = pift_test_get_files_node_all($nid);
-  dpm($files);
   foreach ($files as $file) {
     $file = (array) $file;
     if ($file['has_test'] === NULL && pift_test_check_criteria_file($file)) {

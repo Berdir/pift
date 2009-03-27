@@ -22,12 +22,19 @@ define('PIFT_RETEST', variable_get('pift_retest', 24 * 60 * 60));
 define('PIFT_DELETE', variable_get('pift_delete', FALSE));
 define('PIFT_LAST_CID', variable_get('pift_last_cid', 0));
 
+/**
+ * Maximum number of items of the same type to transfer in a single XML-RPC
+ * request.
+ */
+define('PIFT_XMLRPC_MAX', 50);
+
 /*
  * Test status codes.
  */
 define('PIFT_STATUS_QUEUE', 1);
-define('PIFT_STATUS_PASS', 2);
+define('PIFT_STATUS_SENT', 2);
 define('PIFT_STATUS_FAIL', 3);
+define('PIFT_STATUS_PASS', 4);
 
 if (!defined('PIFR_RESPONSE_ACCEPTED')) {
   /*
@@ -134,7 +141,7 @@ function pift_cron() {
         variable_set('pift_last_cid', $cid);
       }
 
-      pift_cron_queue_batch();
+      pift_cron_queue_batch($time);
 
       variable_set('pift_last', $time);
     }

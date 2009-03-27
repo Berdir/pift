@@ -52,7 +52,6 @@ function pift_pages_project_issue_settings(&$form, $form_state) {
  */
 function pift_pages_project_issue_settings_submit($form, &$form_state) {
   $enabled = pift_project_enabled($form_state['values']['nid']);
-  dpm($enabled ? 'true' : 'false');
   if ($form_state['values']['pift_enable'] && !$enabled) {
     db_query('INSERT INTO {pift_project}
               VALUES (%d)', $form_state['values']['nid']);
@@ -128,29 +127,23 @@ function theme_pift_attachments(array $files) {
   $header = array(t('Attachment'), t('Size'), t('Test results'), t('Operations'));
   $rows = array();
   foreach ($files as $file) {
-    $class = '';
     $row = array();
+
     $row[] = l($file['filename'], $file['filepath']);
     $row[] = format_size($file['filesize']);
+
     if ($file['has_test'] !== NULL) {
-      $row[] = $file['status'] > PIFT_STATUS_QUEUE ? check_plain($file['message']) : '<em>' . t('Queued for testing') . '</em>';
-      if ($file['status'] == PIFT_STATUS_PASS) {
-        $class = 'pift-pass';
-      }
-      elseif ($file['status'] == PIFT_STATUS_FAIL) {
-        $class = 'pift-fail';
-      }
-      elseif ($file['status'] == PIFT_STATUS_QUEUE && $file['message']) {
-        $class = 'pift-retest';
-        $row[count($row) - 1] = '<em>' . t('Queued for re-testing') . '</em>';
-      }
+      list($row[], $class) = pift_attachment_process($file['status'], $file['message']);
     }
     else {
       $row[] = '<em>' . t('Ignored') . '</em>';
+      $class = '';
     }
 
+    // Add valid operations.
     $operations = array();
-    if ($file['status'] > PIFT_STATUS_QUEUE) {
+    if ($file['status'] > PIFT_STATUS_SENT) {
+      $operations[] = l(t('View details'), PIFT_SERVER . 'pifr/test/' . $file['test_id']);
       $operations[] = l(t('Re-test'), 'pift/retest/' . $file['test_id']);
     }
 //    TODO Implement later.
@@ -162,4 +155,31 @@ function theme_pift_attachments(array $files) {
     $rows[] = array('class' => $class, 'data' => $row);
   }
   return theme('table', $header, $rows);
+}
+
+/**
+ * Process the specified attachment information and return the valid cell
+ * contents and row CSS class.
+ *
+ * @param integer $status Test status, PIFT_STATUS_*.
+ * @param string $message Message result of testing.
+ * @return array Cell value and CSS class.
+ */
+function pift_attachment_process($status, $message) {
+  $class = '';
+  if ($status == PIFT_STATUS_QUEUE && $message) {
+    $cell = '<em>' . t('Queued for re-testing') . '</em>';
+    $class = 'pift-retest';
+  }
+  else if ($status == PIFT_STATUS_QUEUE) {
+    $cell = '<em>' . t('Queued for testing') . '</em>';
+  }
+  elseif ($status == PIFT_STATUS_SENT) {
+    $cell = '<em>' . t('Test request sent') . '</em>';
+  }
+  elseif ($status > PIFT_STATUS_SENT) {
+    $cell = check_plain($message);
+    $class = ($status == PIFT_STATUS_PASS ? 'pift-pass' : 'pift-fail');
+  }
+  return array($cell, $class);
 }
