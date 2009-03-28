@@ -178,7 +178,7 @@ function pift_attachment_process($status, $message) {
     $cell = '<em>' . t('Queued for re-testing') . '</em>';
     $class = 'pift-retest';
   }
-  else if ($status == PIFT_STATUS_QUEUE) {
+  else if ($status == PIFT_STATUS_QUEUE || $status == NULL) {
     $cell = '<em>' . t('Queued for testing') . '</em>';
   }
   elseif ($status == PIFT_STATUS_SENT) {
