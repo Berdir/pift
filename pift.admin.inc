@@ -62,11 +62,19 @@ function pift_admin_settings_form() {
     t('The issue the file is attached to is still passing the file testing filters for project, issue status, and release tag.'),
     t('The file is the last testable file posted to the issue.'),
   );
-  $form['interface']['pift_followup'] = array(
+  $form['interface']['pift_followup_fail'] = array(
     '#type' => 'select',
-    '#title' => t('Followup issue status'),
-    '#description' => t('The status to set an issue to when a test result meets any of the following criteria.' . theme('item_list', $criteria)),
-    '#default_value' => PIFT_FOLLOWUP,
+    '#title' => t('Followup issue status - fail'),
+    '#description' => t('The status to set an issue to when a test result meets all of the following criteria.' . theme('item_list', $criteria)),
+    '#default_value' => PIFT_FOLLOWUP_FAIL,
+    '#options' => project_issue_state(),
+    '#required' => TRUE,
+  );
+  $form['interface']['pift_followup_retest'] = array(
+    '#type' => 'select',
+    '#title' => t('Followup issue status - retest'),
+    '#description' => t('The status to set an issue to when someone requests a re-test and the issue currently does not fit the test criteria.'),
+    '#default_value' => PIFT_FOLLOWUP_RETEST,
     '#options' => project_issue_state(),
     '#required' => TRUE,
   );

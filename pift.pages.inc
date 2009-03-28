@@ -109,7 +109,7 @@ function pift_pages_retest_confirm_form_submit($form, &$form_state) {
     if ($test['fid'] && !pift_test_check_criteria_issue(node_load($test['nid']))) {
       project_issue_add_auto_followup(array(
         'nid' => $test['nid'],
-        'sid' => array_shift(variable_get('pift_status', array())),
+        'sid' => PIFT_FOLLOWUP_RETEST,
         'comment' => theme('pift_auto_followup', 'retest', $test['nid'], $test['cid']),
       ));
     }

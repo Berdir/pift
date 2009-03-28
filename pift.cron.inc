@@ -310,7 +310,7 @@ function pift_cron_check_auto_followup(array $result) {
 function pift_cron_auto_followup($nid, $cid) {
   project_issue_add_auto_followup(array(
     'nid' => $nid,
-    'sid' => PIFT_FOLLOWUP,
+    'sid' => PIFT_FOLLOWUP_FAIL,
     'comment' => theme('pift_auto_followup', 'fail', $nid, $cid),
   ));
 }
