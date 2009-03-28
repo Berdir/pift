@@ -20,7 +20,7 @@ function pift_admin_settings_form() {
   $form['general']['pift_frequency'] = array(
     '#type' => 'select',
     '#title' => t('Send frequency'),
-    '#description' => t('Frequency at which test requests will be sent.'),
+    '#description' => t('Frequency at which test requests will be sent and test results retrieved.'),
     '#options' => array(
       -1 => t('Disabled'),
       0 => t('Cron run'),
@@ -33,7 +33,7 @@ function pift_admin_settings_form() {
   $form['general']['pift_key'] = array(
     '#type' => 'textfield',
     '#title' => t('Client key'),
-    '#description' => t('The key assigned to client.'),
+    '#description' => t('The key assigned to this client.'),
     '#default_value' => PIFT_KEY,
     '#required' => TRUE,
   );
@@ -59,7 +59,7 @@ function pift_admin_settings_form() {
   );
   $criteria = array(
     t('The file has failed testing.'),
-    t('The issue the file is attached to is still passing the file testing filters for project, issue status, and release tag.'),
+    t('The issue the file is attached to is still passing the file testing criteria.'),
     t('The file is the last testable file posted to the issue.'),
   );
   $form['interface']['pift_followup_fail'] = array(
@@ -96,7 +96,7 @@ function pift_admin_settings_form() {
     '#type' => 'select',
     '#multiple' => TRUE,
     '#title' => t('Issue statuses'),
-    '#description' => t('List of issue status that an issue must be set to in order to test files.'),
+    '#description' => t('List of issue statuses that an issue must belong to one of in order to test files.'),
     '#default_value' => variable_get('pift_status', array()),
     '#options' => project_issue_state(),
     '#required' => TRUE,
@@ -130,7 +130,7 @@ function pift_admin_settings_form() {
   $form['advanced']['pift_retest'] = array(
     '#type' => 'select',
     '#title' => t('Re-test interval'),
-    '#description' => t('Number of days to wait before re-testing a previously passed file, or -1 to prevent re-testing.'),
+    '#description' => t('Number of days to wait before re-testing a previously passed file.'),
     '#options' => array(
       -1,
       24 * 60 * 60,
