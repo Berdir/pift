@@ -14,7 +14,8 @@
  * @return array Test data.
  */
 function pift_test_get($test_id) {
-  return db_fetch_array(db_query('SELECT t.*, pr.*, pf.*, f.*, IF(u.nid IS NULL, cu.nid, u.nid) AS nid, cu.cid
+  return db_fetch_array(db_query('SELECT t.*, pr.rid, f.fid, f.filename, f.filesize,
+                                     IF(u.nid IS NULL, cu.nid, u.nid) AS nid, cu.cid
                                    FROM {pift_test} t
                                    LEFT JOIN {pift_release} pr
                                      ON t.test_id = pr.test_id
@@ -36,7 +37,7 @@ function pift_test_get($test_id) {
  * @return array List of files and test data.
  */
 function pift_test_get_files_comment($cid) {
-  $result = db_query('SELECT f.*, cu.*, pf.test_id AS has_test, t.*
+  $result = db_query('SELECT f.fid, f.filename, f.filesize, cu.nid, cu.cid, pf.test_id AS has_test, t.*
                       FROM {files} f
                       INNER JOIN {comment_upload} cu
                         ON f.fid = cu.fid
@@ -60,7 +61,7 @@ function pift_test_get_files_comment($cid) {
  * @return array List of files and test data.
  */
 function pift_test_get_files_comment_all($nid) {
-  $result = db_query('SELECT f.*, cu.*, pf.test_id AS has_test, t.*
+  $result = db_query('SELECT f.fid, f.filename, f.filesize, cu.nid, cu.cid, pf.test_id AS has_test, t.*
                       FROM {files} f
                       INNER JOIN {comment_upload} cu
                         ON f.fid = cu.fid
@@ -85,7 +86,7 @@ function pift_test_get_files_comment_all($nid) {
  * @return array List of files and test data.
  */
 function pift_test_get_files_node($nid) {
-  $result = db_query('SELECT f.*, u.*, pf.test_id AS has_test, t.*
+  $result = db_query('SELECT f.fid, f.filename, f.filesize, u.nid, pf.test_id AS has_test, t.*
                       FROM {files} f
                       INNER JOIN {upload} u
                         ON f.fid = u.fid

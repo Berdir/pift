@@ -273,11 +273,9 @@ function pift_cron_check_auto_followup(array $result) {
   if (!$result['pass']) {
     // Test did not pass, make sure that test is for a file.
     $test = pift_test_get($result['test_id']);
-    dpm('non-pass');
     if ($test['fid']) {
       // Get the current issue state and ensure that the test is the last one for
       // the particular issue.
-      dpm('file');
       $test_id = db_result(db_query('SELECT t.test_id
                                      FROM {pift_test} t
                                      JOIN {pift_file} pf
@@ -293,7 +291,6 @@ function pift_cron_check_auto_followup(array $result) {
                                      LIMIT 1', $test['nid'], $test['nid']));
 
       if ($test_id == $test['test_id'] && pift_test_check_criteria_issue(node_load($test['nid']))) {
-        dpm('passed criteria: ');
         // Test is last one for the particular issue and still fits the criteria.
         pift_cron_auto_followup($test['nid'], $test['cid']);
       }
