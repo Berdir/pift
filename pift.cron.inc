@@ -232,7 +232,7 @@ function pift_cron_get_release($pid, $tags) {
  */
 function pift_cron_retreive_results() {
   $next = PIFT_LAST;
-  do {
+  while ($next) {
     $response = xmlrpc(PIFT_SERVER . '/xmlrpc.php', 'pifr.retrieve', PIFT_KEY, $next);
     $next = FALSE;
 
@@ -252,6 +252,8 @@ function pift_cron_retreive_results() {
                   timestamp = %d
                   WHERE test_id = %d",
                   $result['pass'] ? PIFT_STATUS_PASS : PIFT_STATUS_FAIL, $result['message'], time(), $result['test_id']);
+
+        pift_cron_check_auto_followup($result);
       }
 
       $next = isset($response['next']) ? $response['next'] : FALSE;
@@ -260,5 +262,68 @@ function pift_cron_retreive_results() {
       watchdog('pift', 'Invalid response to retrieval of test resutls.', array(), WATCHDOG_ERROR);
     }
   }
-  while ($next);
+}
+
+/**
+ * Check if an auto followup comment is applicable and if so make one.
+ *
+ * @param array $result Test result from XML-RPC retrieval.
+ */
+function pift_cron_check_auto_followup(array $result) {
+  if (!$result['pass']) {
+    // Test did not pass, make sure that test is for a file.
+    $test = pift_test_get($result['test_id']);
+    dpm('non-pass');
+    if ($test['fid']) {
+      // Get the current issue state and ensure that the test is the last one for
+      // the particular issue.
+      dpm('file');
+      $test_id = db_result(db_query('SELECT t.test_id
+                                     FROM {pift_test} t
+                                     JOIN {pift_file} pf
+                                       ON t.test_id = pf.test_id
+                                     LEFT JOIN {upload} u
+                                       ON pf.fid = u.fid
+                                     LEFT JOIN {comment_upload} cu
+                                       ON pf.fid = cu.fid
+                                     JOIN {project_issues} i
+                                       ON (u.nid = i.nid OR cu.nid = i.nid)
+                                     WHERE u.nid = %d OR cu.nid = %d
+                                     ORDER BY pf.fid DESC
+                                     LIMIT 1', $test['nid'], $test['nid']));
+
+      if ($test_id == $test['test_id'] && pift_test_check_criteria_issue(node_load($test['nid']))) {
+        dpm('passed criteria: ');
+        // Test is last one for the particular issue and still fits the criteria.
+        pift_cron_auto_followup($test['nid'], $test['cid']);
+      }
+    }
+  }
+}
+
+/**
+ * Create an auto followup comment on the specified node.
+ *
+ * @param integer $nid Node ID to post the followup on.
+ * @param integer $cid Comment ID, if applicable, containing the failed test.
+ */
+function pift_cron_auto_followup($nid, $cid) {
+  dpm(array($nid, $cid));
+  project_issue_add_auto_followup(array(
+    'nid' => $nid,
+    'sid' => PIFT_FOLLOWUP,
+    'comment' => theme('pift_cron_auto_followup', $nid, $cid),
+  ));
+}
+
+/**
+ * Theme the auto followup comments.
+ *
+ * @param integer $nid Node ID containting the failed test.
+ * @param integer $cid Comment ID, if applicable, containing the failed test.
+ * @return string HTML output.
+ */
+function theme_pift_cron_auto_followup($nid, $cid) {
+  return t('The last submitted patch <a href="#@id">failed testing</a>.',
+            array('@id' => "pift-results-$nid" . ($cid ? "-$cid" : '')));
 }
