@@ -102,12 +102,12 @@ function pift_theme() {
       ),
       'file' => 'pift.pages.inc',
     ),
-    'pift_cron_auto_followup' => array(
+    'pift_auto_followup' => array(
       'arguments' => array(
+        'message' => '',
         'nid' => 0,
         'cid' => 0,
       ),
-      'file' => 'pift.cron.inc',
     ),
   );
 }
@@ -253,4 +253,25 @@ function pift_comment_load_node($comment) {
     $nid = is_array($comment['nid']) ? $comment['nid']['#value'] : $comment['nid'];
   }
   return node_load($nid);
+}
+
+/**
+ * Theme the auto followup comments.
+ *
+ * @param string $message Comment message.
+ * @param integer $nid Node ID containting the failed test.
+ * @param integer $cid Comment ID, if applicable, containing the failed test.
+ * @return string HTML output.
+ */
+function theme_pift_auto_followup($type, $nid, $cid) {
+  global $user;
+  if ($type == 'retest') {
+    return t('!user requested that <a href="#@id">failed test</a> be re-tested.',
+              array('!user' => theme('username', $user), '@id' => "pift-results-$nid" . ($cid ? "-$cid" : '')));
+  }
+  elseif ($type == 'fail') {
+    return t('The last submitted patch <a href="#@id">failed testing</a>.',
+               array('@id' => "pift-results-$nid" . ($cid ? "-$cid" : '')));
+  }
+  return '';
 }

@@ -71,22 +71,23 @@ function pift_pages_retest_confirm_form(&$form_state, $test_id) {
   $test = pift_test_get($test_id);
 
   if ($test) {
-    $file = (bool) $test['fid'];
-
     $form = array();
-    $form['test_id'] = array(
+    $form['test'] = array(
       '#type' => 'value',
-      '#value' => $test_id,
+      '#value' => array(
+        'test_id' => $test_id,
+        'fid' => $test['fid'],
+        'nid' => ($test['fid'] ? $test['nid'] : $test['rid']),
+        'cid' => ($test['cid'] ? $test['cid'] : 0),
+        'status' => $test['status'],
+        'title' => ($test['fid'] ? $test['filename'] : project_release_get_version((object) $test))
+      ),
     );
-    $form['test_title'] = array(
-      '#type' => 'value',
-      '#value' => $file ? $test['filename'] : project_release_get_version((object) $test),
-    );
-    $form['#redirect'] = 'node/' . ($file ? $test['nid'] : $test['rid']);
+    $form['#redirect'] = 'node/' . $form['test']['#value']['nid'];
 
     return confirm_form(
       $form,
-      t('Are you sure you want to request that %title be re-tested?', array('%title' => $form['test_title']['#value'])),
+      t('Are you sure you want to request that %title be re-tested?', array('%title' => $form['test']['#value']['title'])),
       $form['#redirect'],
       t('Once requested the test will be re-queued and results will be updated once the re-test has finished.'),
       t('Re-test'),
@@ -102,9 +103,17 @@ function pift_pages_retest_confirm_form(&$form_state, $test_id) {
  * Re-queue test if it still meets are criteria.
  */
 function pift_pages_retest_confirm_form_submit($form, &$form_state) {
-  $test = pift_test_get($form_state['values']['test_id']);
+  $test = $form_state['values']['test'];
 
-  if ($test['status'] > PIFT_STATUS_SENT && pift_test_check_criteria_file($test)) {
+  if ($test['status'] > PIFT_STATUS_SENT) {
+    if ($test['fid'] && !pift_test_check_criteria_issue(node_load($test['nid']))) {
+      project_issue_add_auto_followup(array(
+        'nid' => $test['nid'],
+        'sid' => array_shift(variable_get('pift_status', array())),
+        'comment' => theme('pift_auto_followup', 'retest', $test['nid'], $test['cid']),
+      ));
+    }
+
     db_query('UPDATE {pift_test}
               SET status = %d,
               timestamp = %d
@@ -112,7 +121,7 @@ function pift_pages_retest_confirm_form_submit($form, &$form_state) {
 
     if (db_affected_rows()) {
       drupal_set_message(t('%title has been submitted for re-testing. Please be patient while you wait for results.',
-                           array('%title' => $form_state['values']['test_title'])));
+                           array('%title' => $test['title'])));
     }
     else {
       drupal_set_message(t('Invalid test.'), 'error');
@@ -120,7 +129,7 @@ function pift_pages_retest_confirm_form_submit($form, &$form_state) {
   }
   else {
     drupal_set_message(t('%title is not currently eligible for re-testing.',
-                         array('%title' => $form_state['values']['test_title'])), 'error');
+                         array('%title' => $test['title'])), 'error');
   }
 }
 

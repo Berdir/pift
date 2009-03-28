@@ -308,22 +308,9 @@ function pift_cron_check_auto_followup(array $result) {
  * @param integer $cid Comment ID, if applicable, containing the failed test.
  */
 function pift_cron_auto_followup($nid, $cid) {
-  dpm(array($nid, $cid));
   project_issue_add_auto_followup(array(
     'nid' => $nid,
     'sid' => PIFT_FOLLOWUP,
-    'comment' => theme('pift_cron_auto_followup', $nid, $cid),
+    'comment' => theme('pift_auto_followup', 'fail', $nid, $cid),
   ));
-}
-
-/**
- * Theme the auto followup comments.
- *
- * @param integer $nid Node ID containting the failed test.
- * @param integer $cid Comment ID, if applicable, containing the failed test.
- * @return string HTML output.
- */
-function theme_pift_cron_auto_followup($nid, $cid) {
-  return t('The last submitted patch <a href="#@id">failed testing</a>.',
-            array('@id' => "pift-results-$nid" . ($cid ? "-$cid" : '')));
 }
