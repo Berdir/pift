@@ -115,9 +115,8 @@ function pift_pages_retest_confirm_form_submit($form, &$form_state) {
     }
 
     db_query('UPDATE {pift_test}
-              SET status = %d,
-              timestamp = %d
-              WHERE test_id = %d', PIFT_STATUS_QUEUE, time(), $test['test_id']);
+              SET status = %d
+              WHERE test_id = %d', PIFT_STATUS_QUEUE, $test['test_id']);
 
     if (db_affected_rows()) {
       drupal_set_message(t('%title has been submitted for re-testing. Please be patient while you wait for results.',
@@ -148,7 +147,7 @@ function theme_pift_attachments(array $files) {
     $row[] = l($file['filename'], $file['filepath']);
     $row[] = format_size($file['filesize']);
 
-    if ($file['has_test'] !== NULL) {
+    if ($file['test_id'] !== NULL) {
       list($row[], $class) = pift_attachment_process($file['status'], $file['message']);
     }
     else {
@@ -187,7 +186,7 @@ function pift_attachment_process($status, $message) {
     $cell = '<em>' . t('Queued for re-testing') . '</em>';
     $class = 'pift-retest';
   }
-  else if ($status == PIFT_STATUS_QUEUE || $status == NULL) {
+  else if ($status == PIFT_STATUS_QUEUE) {
     $cell = '<em>' . t('Queued for testing') . '</em>';
   }
   elseif ($status == PIFT_STATUS_SENT) {

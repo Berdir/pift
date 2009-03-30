@@ -10,15 +10,27 @@ function pift_schema() {
     'fields' => array(
       'test_id' => array(
         'description' => t('Unique test ID.'),
-        'type' => 'serial',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'type' => array(
+        'description' => t('Type of test, PIFT_TYPE_*.'),
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'id' => array(
+        'description' => t('Related test detail record ID, either rid, or fid.'),
+        'type' => 'int',
         'unsigned' => TRUE,
         'not null' => TRUE,
       ),
       'status' => array(
-        'description' => t('Status of the test.'),
+        'description' => t('Status of the test, PIFT_STATUS_*.'),
         'type' => 'int',
+        'unsigned' => TRUE,
         'not null' => TRUE,
-        'default' => 0,
       ),
       'message' => array(
         'description' => t('Summary message of test result.'),
@@ -26,52 +38,18 @@ function pift_schema() {
         'size' => 'big',
         'not null' => TRUE,
       ),
-      'timestamp' => array(
-        'description' => t('Timestamp of last change.'),
+      'last_tested' => array(
+        'description' => t('Timestamp when test results were last recieved.'),
         'type' => 'int',
         'not null' => TRUE,
         'default' => 0,
       ),
     ),
-    'primary key' => array('test_id'),
+    'primary key' => array('test_id', 'type', 'id'),
     'indexes' => array(
       'status' => array('status'),
-      'timestamp' => array('timestamp'),
+      'last_tested' => array('last_tested'),
     ),
-  );
-  $schema['pift_file'] = array(
-    'description' => t('Relates files to tests.'),
-    'fields' => array(
-      'fid' => array(
-        'description' => t('Reference to file ID.'),
-        'type' => 'int',
-        'unsigned' => TRUE,
-        'not null' => TRUE,
-      ),
-      'test_id' => array(
-        'description' => t('Reference to test ID.'),
-        'type' => 'int',
-        'not null' => TRUE,
-      ),
-    ),
-    'primary key' => array('fid', 'test_id'),
-  );
-  $schema['pift_release'] = array(
-    'description' => t('Relates releases to tests.'),
-    'fields' => array(
-      'rid' => array(
-        'description' => t('Reference to release NID.'),
-        'type' => 'serial',
-        'unsigned' => TRUE,
-        'not null' => TRUE,
-      ),
-      'test_id' => array(
-        'description' => t('Reference to test ID.'),
-        'type' => 'int',
-        'not null' => TRUE,
-      ),
-    ),
-    'primary key' => array('rid', 'test_id'),
   );
   $schema['pift_project'] = array(
     'description' => t('Store project testing preference.'),
@@ -96,7 +74,10 @@ function pift_install() {
   // Create tables.
   drupal_install_schema('pift');
 
-  db_query("UPDATE {system} SET weight = 3 WHERE  name = 'pift'");
+  // Ensure that pift runs after comment_upload.
+  db_query("UPDATE {system}
+            SET weight = 3
+            WHERE  name = '%s'", 'pift');
 }
 
 /**

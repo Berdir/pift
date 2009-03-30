@@ -20,8 +20,9 @@ function pift_cron_retest() {
   $retest_time = time() - PIFT_RETEST;
   db_query("UPDATE {pift_test}
             SET status = %d
-            WHERE test_id IN (
-              SELECT pf.test_id
+            WHERE type = %d
+            AND id IN (
+              SELECT f.fid
               FROM {files} f
               LEFT JOIN {upload} u
                 ON f.fid = u.fid
@@ -35,13 +36,12 @@ function pift_cron_retest() {
               JOIN {project_release_nodes} r
                 ON pi.rid = r.nid
 
-              JOIN {pift_file} pf
-                ON (u.fid = pf.fid OR cu.fid = pf.fid)
               WHERE pi.sid IN (" . implode(',', array_fill(0, count($sids), '%d')) . ")
               AND r.tag REGEXP '%s'
             )
-            AND timestamp < %d",
-            array_merge(array(PIFT_STATUS_QUEUE), $sids, array(pift_test_release_regex(TRUE)), array($retest_time)));
+            AND last_tested < %d",
+            array_merge(array(PIFT_STATUS_QUEUE), array(PIFT_TYPE_FILE), $sids,
+                        array(pift_test_release_regex(TRUE)), array($retest_time)));
 }
 
 /**
@@ -74,7 +74,7 @@ function pift_cron_test_release($min, $max) {
         pift_test_requeue($test_id);
       }
       else if ($test_id !== 0) {
-        pift_test_add_release($rid);
+        pift_test_add(PIFT_TYPE_RELEASE, $rid);
       }
     }
   }
@@ -96,13 +96,13 @@ function pift_cron_queue_batch() {
       // Store test records using assigned test IDs.
       foreach ($batch['branches'] as $key => $branch) {
         if (isset($response['branches'][$key])) {
-          pift_test_add($response['branches'][$key], 'branch', $batch['branches'][$key]['branch_nid']);
+          pift_test_sent($response['branches'][$key], PIFT_TYPE_RELEASE, $batch['branches'][$key]['branch_nid']);
         }
       }
 
       foreach ($response['files'] as $key => $file) {
         if (isset($response['files'][$key])) {
-          pift_test_add($response['files'][$key], 'file', $files[$key]);
+          pift_test_sent($response['files'][$key], PIFT_TYPE_FILE, $files[$key]);
         }
       }
     }
@@ -128,18 +128,16 @@ function pift_cron_queue_batch_build() {
   $projects = array();
 
   // Test all files that are marked as needs testing or have never been tested.
-  $result = db_query('SELECT pf.fid, f.filepath, u.nid AS u_nid, cu.nid AS c_nid, cu.cid AS c_cid
-                      FROM {pift_file} pf
-                      LEFT JOIN {pift_test} t
-                        ON pf.test_id = t.test_id
+  $result = db_query('SELECT f.fid, f.filepath, u.nid AS u_nid, cu.nid AS c_nid, cu.cid AS c_cid
+                      FROM {pift_test} t
                       JOIN {files} f
-                        ON pf.fid = f.fid
+                        ON (t.type = %d AND t.id = f.fid)
                       LEFT JOIN {upload} u
-                        ON pf.fid = u.fid
+                        ON f.fid = u.fid
                       LEFT JOIN {comment_upload} cu
-                        ON pf.fid = cu.fid
-                      WHERE (t.status = %d OR t.status IS NULL)
-                      LIMIT %d', PIFT_STATUS_QUEUE, PIFT_XMLRPC_MAX);
+                        ON f.fid = cu.fid
+                      WHERE t.status = %d
+                      LIMIT %d', PIFT_TYPE_FILE, PIFT_STATUS_QUEUE, PIFT_XMLRPC_MAX);
   while ($file = db_fetch_array($result)) {
     $node_file = ($file['u_nid'] ? TRUE : FALSE);
     $issue = node_load(($node_file ? $file['u_nid'] : $file['c_nid']));
@@ -155,12 +153,11 @@ function pift_cron_queue_batch_build() {
   }
 
   // Test the branches that are marked as needs testing or have never been tested.
-  $result = db_query('SELECT *
-                      FROM {pift_release} pr
-                      LEFT JOIN {pift_test} t
-                        ON pr.test_id = t.test_id
-                      WHERE (t.status = %d OR t.status IS NULL)
-                      LIMIT %d', PIFT_STATUS_QUEUE, PIFT_XMLRPC_MAX);
+  $result = db_query('SELECT t.id AS rid
+                      FROM {pift_test} t
+                      WHERE t.type = %d
+                      AND t.status = %d
+                      LIMIT %d', PIFT_TYPE_RELEASE, PIFT_STATUS_QUEUE, PIFT_XMLRPC_MAX);
   while ($branch = db_fetch_array($result)) {
     $branches[$branch['rid']] = TRUE;
   }
@@ -249,7 +246,7 @@ function pift_cron_retreive_results() {
         db_query("UPDATE {pift_test}
                   SET status = %d,
                   message = '%s',
-                  timestamp = %d
+                  last_tested = %d
                   WHERE test_id = %d",
                   $result['pass'] ? PIFT_STATUS_PASS : PIFT_STATUS_FAIL, $result['message'], time(), $result['test_id']);
 
@@ -278,17 +275,15 @@ function pift_cron_check_auto_followup(array $result) {
       // the particular issue.
       $test_id = db_result(db_query('SELECT t.test_id
                                      FROM {pift_test} t
-                                     JOIN {pift_file} pf
-                                       ON t.test_id = pf.test_id
                                      LEFT JOIN {upload} u
-                                       ON pf.fid = u.fid
+                                       ON (t.type = %d AND t.id = u.fid)
                                      LEFT JOIN {comment_upload} cu
-                                       ON pf.fid = cu.fid
+                                       ON (t.type = %d AND t.id = cu.fid)
                                      JOIN {project_issues} i
                                        ON (u.nid = i.nid OR cu.nid = i.nid)
                                      WHERE u.nid = %d OR cu.nid = %d
-                                     ORDER BY pf.fid DESC
-                                     LIMIT 1', $test['nid'], $test['nid']));
+                                     ORDER BY t.id DESC
+                                     LIMIT 1', PIFT_TYPE_FILE, PIFT_TYPE_FILE, $test['nid'], $test['nid']));
 
       if ($test_id == $test['test_id'] && pift_test_check_criteria_issue(node_load($test['nid']))) {
         // Test is last one for the particular issue and still fits the criteria.

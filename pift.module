@@ -29,6 +29,9 @@ define('PIFT_LAST_CID', variable_get('pift_last_cid', 0));
  */
 define('PIFT_XMLRPC_MAX', 50);
 
+define('PIFT_TYPE_RELEASE', 1);
+define('PIFT_TYPE_FILE', 2);
+
 /*
  * Test status codes.
  */
