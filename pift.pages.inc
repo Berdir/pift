@@ -139,7 +139,7 @@ function pift_pages_retest_confirm_form_submit($form, &$form_state) {
  * @return string HTML output.
  */
 function theme_pift_attachments(array $files) {
-  $header = array(t('Attachment'), t('Size'), t('Status'), t('Test results'), t('Operations'));
+  $header = array(t('Attachment'), t('Size'), t('Status'), t('Test result'), t('Operations'));
   $rows = array();
   foreach ($files as $file) {
     $row = array();

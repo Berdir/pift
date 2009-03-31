@@ -14,7 +14,7 @@
  * @return array Test data.
  */
 function pift_test_get($test_id) {
-  return db_fetch_array(db_query('SELECT t.*, f.fid, f.filename, f.filesize,
+  return db_fetch_array(db_query('SELECT t.*, f.fid, f.filename, f.filepath, f.filesize,
                                      IF(u.nid IS NULL, cu.nid, u.nid) AS nid, cu.cid
                                    FROM {pift_test} t
                                    LEFT JOIN {files} f
@@ -33,7 +33,7 @@ function pift_test_get($test_id) {
  * @return array List of files and test data.
  */
 function pift_test_get_files_comment($cid) {
-  $result = db_query('SELECT f.fid, f.filename, f.filesize, cu.nid, cu.cid, t.*
+  $result = db_query('SELECT f.fid, f.filename, f.filepath, f.filesize, cu.nid, cu.cid, t.*
                       FROM {files} f
                       INNER JOIN {comment_upload} cu
                         ON f.fid = cu.fid
@@ -55,7 +55,7 @@ function pift_test_get_files_comment($cid) {
  * @return array List of files and test data.
  */
 function pift_test_get_files_comment_all($nid) {
-  $result = db_query('SELECT f.fid, f.filename, f.filesize, cu.nid, cu.cid, t.*
+  $result = db_query('SELECT f.fid, f.filename, f.filepath, f.filesize, cu.nid, cu.cid, t.*
                       FROM {files} f
                       INNER JOIN {comment_upload} cu
                         ON f.fid = cu.fid
@@ -78,7 +78,7 @@ function pift_test_get_files_comment_all($nid) {
  * @return array List of files and test data.
  */
 function pift_test_get_files_node($nid) {
-  $result = db_query('SELECT f.fid, f.filename, f.filesize, u.nid, t.*
+  $result = db_query('SELECT f.fid, f.filename, f.filepath, f.filesize, u.nid, t.*
                       FROM {files} f
                       INNER JOIN {upload} u
                         ON f.fid = u.fid
@@ -161,17 +161,16 @@ function pift_test_add_files(array $files) {
  * @param integer $id Related test detail record ID, either rid, or fid.
  */
 function pift_test_add($type, $id) {
-  db_query('INSERT INTO {pift_test} (type, id, status, timestamp)
-            VALUES (%d, %d, %d, %d)', $type, $id, PIFT_STATUS_QUEUE, time());
+  db_query('INSERT INTO {pift_test} (type, id, status)
+            VALUES (%d, %d, %d)', $type, $id, PIFT_STATUS_QUEUE);
 }
 
 function pift_test_sent($test_id, $type, $id) {
   db_query('UPDATE {pift_test}
             SET test_id = %d,
             status = %d,
-            timestamp = %d
             WHERE type = %d
-            AND id = %d', $test_id, PIFT_STATUS_SENT, time(), $type, $id);
+            AND id = %d', $test_id, PIFT_STATUS_SENT, $type, $id);
 }
 
 /**

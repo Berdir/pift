@@ -196,8 +196,10 @@ function pift_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
       }
       break;
     case 'insert':
-      $files = upload_load($node);
-      pift_test_add_files($files);
+      if (pift_test_check_criteria_issue($node)) {
+        $files = upload_load($node);
+        pift_test_add_files($files);
+      }
       break;
     case 'delete':
       variable_set('pift_delete', TRUE);

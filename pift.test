@@ -1,0 +1,188 @@
+<?php
+// $Id$
+/**
+ * @file
+ * Provide test of functionality.
+ *
+ * Copyright 2008-2009 by Jimmy Berry ("boombatower", http://drupal.org/user/214218)
+ */
+
+class PIFTTestCase extends DrupalWebTestCase {
+
+  protected $adminUser;
+
+  protected $drupalProject;
+
+  protected $testProject;
+
+  protected $testRelease;
+
+  /**
+   * Implementation of getInfo().
+   */
+  public function getInfo() {
+    return array(
+      'name' => t('PIFT'),
+      'description' => t('Confirm that the various workflow elements that PIFT modified work as intended.'),
+      'group' => t('PIFT'),
+    );
+  }
+
+  /**
+   * Implementation of setUp().
+   */
+  public function setUp() {
+    parent::setUp('upload', 'comment_upload', 'project', 'project_release', 'project_issue', 'cvs', 'pift');
+
+    $this->adminUser = $this->drupalCreateUser(array('administer projects', 'maintain projects', 'access project issues',
+                                                      'create project issues', 'administer CVS', 'pift re-test files',
+                                                      'administer content types', 'upload files', 'upload files to comments'));
+    $this->drupalLogin($this->adminUser);
+    $this->setUpProject();
+    $this->setUpSettings();
+  }
+
+  /**
+   * Setup project related information for test.
+   */
+  protected function setUpProject() {
+    // Setup core CVS repository.
+    $edit = array(
+      'name' => 'drupal-core',
+      'method' => 1, // Use external script to insert data, thus never retrieve.
+      'root' => ':pserver:anonymous:anonymous@cvs.drupal.org:/cvs/drupal',
+    );
+    $this->drupalPost('admin/project/cvs-repositories/add', $edit, t('Save repository'));
+    $this->assertText(t('Added CVS repository: @name', array('@name' => $edit['name'])));
+
+    // Setup contrib CVS repository.
+    $edit = array(
+      'name' => 'drupal-contrib',
+      'method' => 1, // Use external script to insert data, thus never retrieve.
+      'root' => ':pserver:anonymous:anonymous@cvs.drupal.org:/cvs/drupal-contrib',
+    );
+    $this->drupalPost('admin/project/cvs-repositories/add', $edit, t('Save repository'));
+    $this->assertText(t('Added CVS repository: @name', array('@name' => $edit['name'])));
+
+    // Setup CVS account.
+    $edit = array(
+      'data' => $this->adminUser->name . ':anonymous:anonymous',
+    );
+    $this->drupalPost('admin/project/cvs-accounts/import', $edit, t('Import accounts'));
+    $this->assertText(t('added @user', array('@user' => $this->adminUser->name)));
+
+    // Set project settings.
+    $edit = array(
+      'project_issue_followup_user' => $this->adminUser->name,
+    );
+    $this->drupalPost('admin/project/project-issue-settings', $edit, t('Save configuration'));
+
+    // Enable attachments on project issues.
+    $edit = array(
+      'upload' => 1,
+    );
+    $this->drupalPost('admin/content/node-type/project-issue', $edit, t('Save content type'));
+    $this->assertRaw(t('The content type %type has been added.', array('%type' => 'Issue')));
+
+    // Setup core project.
+    $edit = array(
+      'title' => 'Drupal',
+      'project[uri]' => 'drupal',
+      'cvs[repository]' => 1, // Core CVS repository.
+      'cvs[directory]' => '/drupal',
+    );
+    $this->drupalPost('node/add/project-project', $edit, t('Save'));
+    $this->drupalProject = node_load(array('title' => $edit['title']));
+
+    // Setup contrib project.
+    $edit = array(
+      'title' => 'Test',
+      'project[uri]' => 'test',
+      'cvs[repository]' => 2, // Contrib CVS repository.
+      'cvs[directory]' => '/modules/simpletest',
+    );
+    $this->drupalPost('node/add/project-project', $edit, t('Save'));
+    $this->testProject = node_load(array('title' => $edit['title']));
+
+    // Create release for contrib project.
+    $this->drupalPost('node/add/project-release/' . $this->testProject->nid, array(), t('Next'));
+
+    $edit = array(
+      'project_release[version_major]' => '1',
+      'project_release[version_minor]' => '0',
+    );
+    $this->drupalPost(NULL, $edit, t('Next'));
+
+    $edit = array(
+      'body' => $this->randomName(32),
+    );
+    $this->drupalPost(NULL, $edit, t('Save'));
+    $this->testRelease = node_load(array('title' => $this->testProject->title . ' 1.0'));
+  }
+
+  /**
+   * Setup PIFT settings for test.
+   */
+  protected function setUpSettings() {
+    $edit = array(
+      'pift_key' => md5($this->randomName()),
+      'pift_server' => url('', array('absolute' => TRUE)),
+      'pift_followup_fail' => 13, // Patch (code needs work).
+      'pift_followup_retest' => 8, // Patch (code needs review).
+      'pift_regex' => '/\.txt$/', // Want to use .txt files since they are available as test files.
+      'pift_status[]' => array(8, 14), // Patch (code needs review), patch (ready to commit).
+      'pift_core[7]' => TRUE, // Test 7.x related branches.
+      'pift_pid' => $this->drupalProject->title,
+    );
+    $this->drupalPost('admin/project/pift', $edit, t('Save configuration'));
+  }
+
+  /**
+   * Test the PIFT interface to ensure that adding files are displayed
+   * correctly.
+   */
+  public function testInterface() {
+    // Update a non-patch file and see that it is ignored.
+    $file = array_shift($this->drupalGetTestFiles('text', 1024));
+    $edit = array(
+      'rid' => $this->testRelease->nid,
+      'component' => 'Code',
+      'category' => 'task',
+      'title' => $this->randomName(8),
+      'body' => $this->randomName(32),
+      'files[upload]' => realpath($file->filename),
+    );
+    $this->drupalPost('node/add/project-issue/' . $this->testProject->project['uri'], $edit, t('Save'));
+    $this->assertRaw(t('@type %title has been created', array('@type' => 'Issue', '%title' => $edit['title'])));
+    $issue = node_load(array('title' => $edit['title']));
+
+    $this->checkAttachment($issue->nid, NULL, $file, 'Ignored');
+  }
+
+  /**
+   * Check that an attachment has the intended values.
+   */
+  protected function checkAttachment($nid, $cid, $file, $status, $test_result = 'None', $operations = 'None') {
+    $result = $this->xpath('//div[@id="pift-results-' . $nid . ($cid ? "-$cid" : '') . '"]');
+    $result = $result[0]->table->tbody->tr;
+
+    $this->assertEqual(l($file->basename, file_directory_path() . '/issues/' . $file->basename), $result->td[0]->a->asXML(), t('Link matches.'));
+    $this->assertEqual(format_size(filesize($file->filename)), $this->asText($result->td[1]), t('Size matches.'));
+    $this->assertEqual($status, $this->asText($result->td[2]), t('Status matches.'));
+    $this->assertEqual($test_result, $this->asText($result->td[3]), t('Test result matches.'));
+    $this->assertEqual($operations, $this->asText($result->td[4]), t('Operations match.'));
+  }
+
+  /**
+   * Extract the text contained by the element.
+   *
+   * @param $element Element to extract text from.
+   * @return Extracted text.
+   */
+  function asText(SimpleXMLElement $element) {
+    if (!is_object($element)) {
+      return $this->fail('The element is not an element.');
+    }
+    return trim(html_entity_decode(strip_tags($element->asXML())));
+  }
+}
