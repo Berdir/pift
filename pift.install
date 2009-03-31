@@ -108,3 +108,142 @@ function pift_uninstall() {
     variable_del($var);
   }
 }
+
+/**
+ * Remove old variables.
+ */
+function pift_update_6200() {
+  // List of old variables.
+  $vars = array(
+    'pift_server_sites',
+    'pift_server_send_frequency',
+    'pift_server_last_sent',
+    'pift_next_test_server',
+    'pift_server_file_description',
+    'pift_send_limit',
+    'pift_batch_size',
+    'pift_file_regex',
+    'pift_resend_time',
+    'pift_retest_time',
+    'pift_test_status',
+    'pift_projects',
+    'pift_server_release_tag_regex',
+    'pift_server_debug_file_testing_link',
+    'pift_server_auto_followup_sid',
+  );
+
+  foreach ($vars as $var) {
+    variable_del($var);
+  }
+}
+
+/**
+ * Install new schema.
+ */
+function pift_update_6201() {
+  $schema['pift_test'] = array(
+    'description' => t('Stores test results.'),
+    'fields' => array(
+      'test_id' => array(
+        'description' => t('Unique test ID.'),
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'type' => array(
+        'description' => t('Type of test, PIFT_TYPE_*.'),
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'id' => array(
+        'description' => t('Related test detail record ID, either rid, or fid.'),
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'status' => array(
+        'description' => t('Status of the test, PIFT_STATUS_*.'),
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'message' => array(
+        'description' => t('Summary message of test result.'),
+        'type' => 'text',
+        'size' => 'big',
+        'not null' => TRUE,
+      ),
+      'last_tested' => array(
+        'description' => t('Timestamp when test results were last recieved.'),
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'primary key' => array('test_id', 'type', 'id'),
+    'indexes' => array(
+      'status' => array('status'),
+      'last_tested' => array('last_tested'),
+    ),
+  );
+  $schema['pift_project'] = array(
+    'description' => t('Store project testing preference.'),
+    'fields' => array(
+      'pid' => array(
+        'description' => t('Reference to project NID.'),
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+    ),
+    'primary key' => array('pid'),
+  );
+
+  $ret = array();
+  foreach ($schema as $name => $table) {
+    db_create_table($ret, $name, $table);
+  }
+  return $ret;
+}
+
+/**
+ * Update test records.
+ */
+function pift_update_6202() {
+  $result = db_query('SELECT *
+                      FROM {pift_data}');
+
+  // Map of old status to equivilent new ones.
+  $statuses = array(
+    0 => 1, // PIFT_UNTESTED => PIFT_STATUS_QUEUE
+    1 => 4, // PIFT_PASSED => PIFT_STATUS_PASS
+    2 => 3, // PIFT_FAILED => PIFT_STATUS_FAIL
+    3 => 1, // PIFT_RETEST => PIFT_STATUS_QUEUE
+    4 => 1, // PIFT_NOT_READABLE => PIFT_STATUS_QUEUE
+  );
+
+  // Update old data and insert into test table.
+  $count = 0;
+  while ($test = db_fetch_object($result)) {
+    // Remove link from display data.
+    $message = preg_replace('/\s+(<a|a) href.*?$/', '', $test->display_data);
+
+    $ret[] = update_sql("INSERT INTO {pift_test} (test_id, type, id, status, message, last_tested)
+                         VALUES (%d, %d, %d, %d, '%s', %d)",
+                         0, PIFT_TYPE_FILE, $test->fid, $statuses[$test->status], $message, $test->timestamp);
+    $count++;
+  }
+
+  $new_count = db_result(db_query('SELECT COUNT() FROM {pift_test}'));
+  return array(array('success' => $count == $new_count, 'query' => 'Update test records.'));
+}
+
+/**
+ * Remove old data.
+ */
+function pift_update_6203() {
+  $ret = array();
+  $ret[] = update_sql('DROP TABLE {pift_data}');
+  return $ret;
+}
