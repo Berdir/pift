@@ -36,7 +36,8 @@ class PIFTTestCase extends DrupalWebTestCase {
 
     $this->adminUser = $this->drupalCreateUser(array('administer projects', 'maintain projects', 'access project issues',
                                                       'create project issues', 'administer CVS', 'pift re-test files',
-                                                      'administer content types', 'upload files', 'upload files to comments'));
+                                                      'administer content types', 'upload files', 'upload files to comments',
+                                                      'view files uploaded to comments'));
     $this->drupalLogin($this->adminUser);
     $this->setUpProject();
     $this->setUpSettings();
@@ -80,6 +81,8 @@ class PIFTTestCase extends DrupalWebTestCase {
     // Enable attachments on project issues.
     $edit = array(
       'upload' => 1,
+      'comment_preview' => 0, // Optional.
+      'comment_form_location' => 1, // Display below post or comments.
     );
     $this->drupalPost('admin/content/node-type/project-issue', $edit, t('Save content type'));
     $this->assertRaw(t('The content type %type has been added.', array('%type' => 'Issue')));
@@ -142,7 +145,7 @@ class PIFTTestCase extends DrupalWebTestCase {
    * correctly.
    */
   public function testInterface() {
-    // Update a non-patch file and see that it is ignored.
+    // Upload a patch file and see that it is ignored.
     $file = array_shift($this->drupalGetTestFiles('text', 1024));
     $edit = array(
       'rid' => $this->testRelease->nid,
@@ -157,6 +160,73 @@ class PIFTTestCase extends DrupalWebTestCase {
     $issue = node_load(array('title' => $edit['title']));
 
     $this->checkAttachment($issue->nid, NULL, $file, 'Ignored');
+
+    // Upload file in proper status.
+    $comments = array();
+    $edit = array(
+      'sid' => 8,
+      'files[upload]' => realpath($file->filename),
+    );
+    $this->drupalPost('node/' . $issue->nid, $edit, t('Save'));
+    $comments[] = $this->loadLastComment($issue->nid);
+
+    $this->checkAttachment($issue->nid, NULL, $file, 'Ignored');
+    $this->checkAttachment($issue->nid, $comments[0]->cid, $file, 'Ignored');
+
+    // Enable testing of project.
+    $edit = array(
+      'pift_enable' => TRUE,
+    );
+    $this->drupalPost('node/' . $this->testProject->nid . '/edit/issues', $edit, t('Save'));
+
+    // Upload file when all criteria is matched.
+    $edit = array(
+      'files[upload]' => realpath($file->filename),
+    );
+    $this->drupalPost('node/' . $issue->nid, $edit, t('Save'));
+    $comments[] = $this->loadLastComment($issue->nid);
+
+    $this->checkAttachment($issue->nid, NULL, $file, 'Queued for testing');
+    $this->checkAttachment($issue->nid, $comments[0]->cid, $file, 'Queued for testing');
+    $this->checkAttachment($issue->nid, $comments[1]->cid, $file, 'Queued for testing');
+
+    // Change file regex.
+    $edit = array(
+      'pift_regex' => '/\.patch$/',
+    );
+    $this->drupalPost('admin/project/pift', $edit, t('Save configuration'));
+
+    // Upload non-patch file when all criteria is matched.
+    $edit = array(
+      'files[upload]' => realpath($file->filename),
+    );
+    $this->drupalPost('node/' . $issue->nid, $edit, t('Save'));
+    $comments[] = $this->loadLastComment($issue->nid);
+
+    $this->checkAttachment($issue->nid, NULL, $file, 'Queued for testing');
+    $this->checkAttachment($issue->nid, $comments[0]->cid, $file, 'Queued for testing');
+    $this->checkAttachment($issue->nid, $comments[1]->cid, $file, 'Queued for testing');
+    $this->checkAttachment($issue->nid, $comments[2]->cid, $file, 'Ignored');
+
+    // Change file regex back.
+    $edit = array(
+      'pift_regex' => '/\.txt$/',
+    );
+    $this->drupalPost('admin/project/pift', $edit, t('Save configuration'));
+
+    // Upload patch file when all criteria is matched.
+    $edit = array(
+      'files[upload]' => realpath($file->filename),
+    );
+    $this->drupalPost('node/' . $issue->nid, $edit, t('Save'));
+    file_put_contents('output.html', $this->drupalGetContent());
+    $comments[] = $this->loadLastComment($issue->nid);
+
+    $this->checkAttachment($issue->nid, NULL, $file, 'Queued for testing');
+    $this->checkAttachment($issue->nid, $comments[0]->cid, $file, 'Queued for testing');
+    $this->checkAttachment($issue->nid, $comments[1]->cid, $file, 'Queued for testing');
+    $this->checkAttachment($issue->nid, $comments[2]->cid, $file, 'Queued for testing');
+    $this->checkAttachment($issue->nid, $comments[3]->cid, $file, 'Queued for testing');
   }
 
   /**
@@ -164,13 +234,32 @@ class PIFTTestCase extends DrupalWebTestCase {
    */
   protected function checkAttachment($nid, $cid, $file, $status, $test_result = 'None', $operations = 'None') {
     $result = $this->xpath('//div[@id="pift-results-' . $nid . ($cid ? "-$cid" : '') . '"]');
-    $result = $result[0]->table->tbody->tr;
+    if ($result) {
+      $result = $result[0]->table->tbody->tr;
 
-    $this->assertEqual(l($file->basename, file_directory_path() . '/issues/' . $file->basename), $result->td[0]->a->asXML(), t('Link matches.'));
-    $this->assertEqual(format_size(filesize($file->filename)), $this->asText($result->td[1]), t('Size matches.'));
-    $this->assertEqual($status, $this->asText($result->td[2]), t('Status matches.'));
-    $this->assertEqual($test_result, $this->asText($result->td[3]), t('Test result matches.'));
-    $this->assertEqual($operations, $this->asText($result->td[4]), t('Operations match.'));
+      $this->assertEqual($file->basename, $this->asText($result->td[0]), t('Link matches.'));
+      $this->assertEqual(format_size(filesize($file->filename)), $this->asText($result->td[1]), t('Size matches.'));
+      $this->assertEqual($status, $this->asText($result->td[2]), t('Status matches.'));
+      $this->assertEqual($test_result, $this->asText($result->td[3]), t('Test result matches.'));
+      $this->assertEqual($operations, $this->asText($result->td[4]), t('Operations match.'));
+    }
+    else {
+      $this->fail(t('Attachment not found (n: @nid, c: @cid).', array('@nid' => $nid, '@cid' => $cid)));
+    }
+  }
+
+  /**
+   * Load the last submitted comment for the specified node.
+   *
+   * @param integer $nid Node ID.
+   * @return object Comment object.
+   */
+  protected function loadLastComment($nid) {
+    return db_fetch_object(db_query('SELECT *
+                                      FROM {comments}
+                                      WHERE nid = %d
+                                      ORDER BY cid DESC
+                                      LIMIT 1', $nid));
   }
 
   /**
