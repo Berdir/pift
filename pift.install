@@ -223,6 +223,16 @@ function pift_update_6202() {
     4 => 1, // PIFT_NOT_READABLE => PIFT_STATUS_QUEUE
   );
 
+  // Read in map of ftid => test_id provided from pifr server 1.x.
+  if (file_exists(drupal_get_path('module', 'pift') . '/files.dump.txt')) {
+    $map = array();
+    $lines = file(drupal_get_path('module', 'pift') . '/files.dump.txt');
+    foreach ($lines as $line) {
+      $parts = explode(',', $line);
+      $map[$parts[1]] = $parts[0];
+    }
+  }
+
   // Update old data and insert into test table.
   $count = 0;
   while ($test = db_fetch_object($result)) {
@@ -231,7 +241,7 @@ function pift_update_6202() {
 
     $ret[] = update_sql("INSERT INTO {pift_test} (test_id, type, id, status, message, last_tested)
                          VALUES (%d, %d, %d, %d, '%s', %d)",
-                         0, PIFT_TYPE_FILE, $test->fid, $statuses[$test->status], $message, $test->timestamp);
+                         $map[$test->ftid], PIFT_TYPE_FILE, $test->fid, $statuses[$test->status], $message, $test->timestamp);
     $count++;
   }
 
