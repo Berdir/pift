@@ -228,7 +228,7 @@ function pift_cron_get_release($pid, $tags) {
  * Retrieve test results since the last cron run.
  */
 function pift_cron_retreive_results() {
-  $next = PIFT_LAST;
+  $next = pifr_server_xmlrpc_time_gmt(PIFT_LAST);
   while ($next) {
     $response = xmlrpc(PIFT_SERVER . '/xmlrpc.php', 'pifr.retrieve', PIFT_KEY, $next);
     $next = FALSE;
@@ -258,6 +258,32 @@ function pift_cron_retreive_results() {
     else {
       watchdog('pift', 'Invalid response to retrieval of test resutls.', array(), WATCHDOG_ERROR);
     }
+  }
+}
+
+if (!function_exists('pifr_server_xmlrpc_time_local')) {
+  /**
+   * Convert a GMT Unix timestamp to a local Unix timestamp.
+   *
+   * @param integer $gmt_timestamp GMT Unix timestamp.
+   * @return integer Local timestamp.
+   */
+  function pifr_server_xmlrpc_time_local($gmt_timestamp) {
+    $gmt_now = gmmktime();
+    $offset = $gmt_now - $gmt_timestamp;
+    return time() - $offset;
+  }
+
+  /**
+   * Convert a local Unix timestamp to a GMT Unix timestamp.
+   *
+   * @param integer $timestamp Local Unix timestamp.
+   * @return integer GMT Unix timestamp
+   */
+  function pifr_server_xmlrpc_time_gmt($timestamp) {
+    $now = time();
+    $offset = $now - $timestamp;
+    return gmmktime() - $offset;
   }
 }
 
