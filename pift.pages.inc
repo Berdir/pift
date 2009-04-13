@@ -148,7 +148,7 @@ function theme_pift_attachments(array $files) {
     $row[] = format_size($file['filesize']);
 
     if ($file['test_id'] !== NULL) {
-      list($row[], $class) = pift_attachment_process($file['status']);
+      list($row[], $class) = pift_attachment_process($file['status'], (bool) $file['message']);
       $row[] = $file['message'] ? check_plain($file['message']) : '<em>' . t('None') . '</em>';
     }
     else {
@@ -177,11 +177,12 @@ function theme_pift_attachments(array $files) {
  * message and and row CSS class.
  *
  * @param integer $status Test status, PIFT_STATUS_*.
+ * @param boolean $has_message Attachment has a message.
  * @return array Cell value and CSS class.
  */
-function pift_attachment_process($status) {
+function pift_attachment_process($status, $has_message) {
   $class = '';
-  if ($status == PIFT_STATUS_QUEUE && $message) {
+  if ($status == PIFT_STATUS_QUEUE && $has_message) {
     $cell = t('Queued for re-testing');
     $class = 'pift-retest';
   }
