@@ -168,7 +168,7 @@ function pift_test_add($type, $id) {
 function pift_test_sent($test_id, $type, $id) {
   db_query('UPDATE {pift_test}
             SET test_id = %d,
-            status = %d,
+            status = %d
             WHERE type = %d
             AND id = %d', $test_id, PIFT_STATUS_SENT, $type, $id);
 }
