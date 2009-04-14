@@ -159,7 +159,7 @@ class PIFTTestCase extends DrupalWebTestCase {
     $this->assertRaw(t('@type %title has been created', array('@type' => 'Issue', '%title' => $edit['title'])));
     $issue = node_load(array('title' => $edit['title']));
 
-    $this->checkAttachment($issue->nid, NULL, $file, 'Ignored');
+    $this->checkAttachmentStandard($issue->nid, NULL);
 
     // Upload file in proper status.
     $comments = array();
@@ -170,8 +170,8 @@ class PIFTTestCase extends DrupalWebTestCase {
     $this->drupalPost('node/' . $issue->nid, $edit, t('Save'));
     $comments[] = $this->loadLastComment($issue->nid);
 
-    $this->checkAttachment($issue->nid, NULL, $file, 'Ignored');
-    $this->checkAttachment($issue->nid, $comments[0]->cid, $file, 'Ignored');
+    $this->checkAttachmentStandard($issue->nid, NULL);
+    $this->checkAttachmentStandard($issue->nid, $comments[0]->cid);
 
     // Enable testing of project.
     $edit = array(
@@ -219,7 +219,6 @@ class PIFTTestCase extends DrupalWebTestCase {
       'files[upload]' => realpath($file->filename),
     );
     $this->drupalPost('node/' . $issue->nid, $edit, t('Save'));
-    file_put_contents('output.html', $this->drupalGetContent());
     $comments[] = $this->loadLastComment($issue->nid);
 
     $this->checkAttachment($issue->nid, NULL, $file, 'Queued for testing');
@@ -246,6 +245,15 @@ class PIFTTestCase extends DrupalWebTestCase {
     else {
       $this->fail(t('Attachment not found (n: @nid, c: @cid).', array('@nid' => $nid, '@cid' => $cid)));
     }
+  }
+  
+  /**
+   * Check for standard (upload, comment_upload generated) attachment table.
+   */
+  protected function checkAttachmentStandard($nid, $cid) {
+    $result = $this->xpath('//div[@id="pift-results-' . $nid . ($cid ? "-$cid" : '') . '"]');
+    
+    $this->assertFalse($result, t('Attachment not found (n: @nid, c: @cid).', array('@nid' => $nid, '@cid' => $cid)));
   }
 
   /**

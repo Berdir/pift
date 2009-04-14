@@ -185,7 +185,7 @@ function pift_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
 
   switch ($op) {
     case 'view':
-      if (!$a3) { // Full view.
+      if (!$a3 && pift_project_enabled($node->project_issue['pid'])) { // Full view.
         $files = pift_test_get_files_node($node->nid);
         $node->content['pift_files'] = array(
           '#value' => '<div id="pift-results-' . $node->nid . '">' .
@@ -218,7 +218,7 @@ function pift_comment(&$comment, $op) {
 
   switch ($op) {
     case 'view':
-      if (!empty($comment->files)) {
+      if (!empty($comment->files) && pift_project_enabled($node->project_issue['pid'])) {
         // Remove comment_upload attachments table and generate new one.
         $comment->comment = preg_replace('/<table class="comment-upload-attachments">.*?<\/table>/s', '', $comment->comment);
         $files = pift_test_get_files_comment($comment->cid);
