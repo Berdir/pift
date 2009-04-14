@@ -12,4 +12,4 @@ files[] = pift.test.inc
 dependencies[] = project
 dependencies[] = project_issue
 dependencies[] = project_release
-dependencies[] = cvslog
+dependencies[] = cvs
