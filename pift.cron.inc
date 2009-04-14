@@ -176,7 +176,7 @@ function pift_cron_queue_batch_build() {
       // Branch is not core branch so find out what core branch it is compatible with.
       if (preg_match('/DRUPAL-(\d+)/', $item['identifier'], $match)) {
         // Get the core branch compatible with the numeric version.
-        $rids = pift_cron_get_release($pid, array($match[1]));
+        $rids = pift_cron_get_release(PIFT_PID, array($item['identifier']));
         if ($rids) {
           $item['core_branch_nid'] = $rid[0];
           $branches[] = $rid[0];
