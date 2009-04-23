@@ -20,7 +20,7 @@ class PIFTTestCase extends DrupalWebTestCase {
   /**
    * Implementation of getInfo().
    */
-  public function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('PIFT'),
       'description' => t('Confirm that the various workflow elements that PIFT modified work as intended.'),
