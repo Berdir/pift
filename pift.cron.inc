@@ -59,6 +59,11 @@ function pift_cron_test_release($min, $max) {
                       GROUP BY nid', $min, $max);
   $commits = array();
   while ($branch = db_fetch_array($result)) {
+    if (!pift_project_enabled($branch['pid'])) {
+      // Ignore commits for disabled projects.
+      continue;
+    }
+
     if (!isset($commits[$branch['pid']])) {
       $commits[$branch['pid']] = array();
     }
@@ -69,8 +74,8 @@ function pift_cron_test_release($min, $max) {
     $rids = pift_cron_get_release($pid, $branches);
     foreach ($rids as $rid) {
       $test_id = db_result(db_query('SELECT test_id
-                                     FROM {pift_release}
-                                     WHERE rid = %d)', $rid));
+                                     FROM {pift_test}
+                                     WHERE id = %d', $rid));
       if ($test_id) {
         pift_test_requeue($test_id);
       }

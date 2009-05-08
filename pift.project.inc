@@ -14,8 +14,13 @@
  * @return boolean Project has testing enabled.
  */
 function pift_project_enabled($pid) {
-  $nid = db_result(db_query('SELECT pid
-                             FROM {pift_project}
-                             WHERE pid = %d', $pid));
-  return $nid !== FALSE;
+  static $statuses = array();
+
+  if (!isset($statuses[$pid])) {
+    $nid = db_result(db_query('SELECT pid
+                               FROM {pift_project}
+                               WHERE pid = %d', $pid));
+    $statuses[$pid] = ($nid !== FALSE);
+  }
+  return $statuses[$pid];
 }
