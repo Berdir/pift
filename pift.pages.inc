@@ -144,7 +144,7 @@ function theme_pift_attachments(array $files) {
   foreach ($files as $file) {
     $row = array();
 
-    $row[] = l($file['filename'], $file['filepath']);
+    $row[] = l($file['filename'], file_create_url($file['filepath']));
     $row[] = format_size($file['filesize']);
 
     if ($file['test_id'] !== NULL) {

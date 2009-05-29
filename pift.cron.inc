@@ -150,7 +150,7 @@ function pift_cron_queue_batch_build() {
 
     $batch['files'][] = array(
       'branch_nid' => $issue->project_issue['rid'],
-      'file_url' => url($file['filepath']),
+      'file_url' => file_create_url($file['filepath']),
       'issue_nid' => $issue->nid,
       'issue_cid' => ($file['c_cid'] ? $file['c_cid'] : 0),
     );
