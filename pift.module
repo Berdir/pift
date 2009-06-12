@@ -29,6 +29,11 @@ define('PIFT_LAST_CID', variable_get('pift_last_cid', 0));
  */
 define('PIFT_XMLRPC_MAX', 50);
 
+/**
+ * Maximum number of batches to send during a single cron run.
+ */
+define('PIFT_XMLRPC_MAX_BATCHES', 3);
+
 define('PIFT_TYPE_RELEASE', 1);
 define('PIFT_TYPE_FILE', 2);
 

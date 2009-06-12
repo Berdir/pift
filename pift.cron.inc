@@ -67,7 +67,10 @@ function pift_cron_test_release($min, $max) {
     if (!isset($commits[$branch['pid']])) {
       $commits[$branch['pid']] = array();
     }
-    $commits[$branch['pid']][] = ($branch['branch'] ? $branch['branch'] : 'HEAD');
+
+    // Use associative array to ensure that a branch is only added once.
+    $identifier = $branch['branch'] ? $branch['branch'] : 'HEAD';
+    $commits[$branch['pid']][$identifier] = $identifier;
   }
 
   foreach ($commits as $pid => $branches) {
@@ -75,7 +78,8 @@ function pift_cron_test_release($min, $max) {
     foreach ($rids as $rid) {
       $test_id = db_result(db_query('SELECT test_id
                                      FROM {pift_test}
-                                     WHERE id = %d', $rid));
+                                     WHERE type = %d
+                                     AND id = %d', PIFT_TYPE_RELEASE, $rid));
       if ($test_id) {
         pift_test_requeue($test_id);
       }
@@ -90,6 +94,7 @@ function pift_cron_test_release($min, $max) {
  * Send the all test batches to testing server.
  */
 function pift_cron_queue_batch() {
+  $i = 0;
   while ((list($files, $batch) = pift_cron_queue_batch_build()) && $batch['projects']) {
     $response = xmlrpc(PIFT_SERVER . '/xmlrpc.php', 'pifr.queue', PIFT_KEY, $batch);
     if ($response === FALSE) {
@@ -114,6 +119,12 @@ function pift_cron_queue_batch() {
     }
     else {
       watchdog('pift', 'Invalid response to test queue request.', array(), WATCHDOG_ERROR);
+    }
+
+    if (++$i == PIFT_XMLRPC_MAX_BATCHES) {
+      // Once the maximum number of batches has been sent break out of the loop
+      // and save the rest for the next cron run.
+      break;
     }
   }
 }
