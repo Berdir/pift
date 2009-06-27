@@ -77,7 +77,7 @@ function pift_install() {
   // Ensure that pift runs after comment_upload.
   db_query("UPDATE {system}
             SET weight = 3
-            WHERE  name = '%s'", 'pift');
+            WHERE name = '%s'", 'pift');
 }
 
 /**
