@@ -111,16 +111,16 @@ function pift_test_get_files_node_all($nid) {
  * @return boolean Passed criteria.
  */
 function pift_test_check_criteria_issue($node) {
-  if (!pift_project_enabled($node->pid)) {
+  if (!pift_project_enabled($node->project_issue['pid'])) {
     return FALSE;
   }
 
-  $release = node_load($node->rid);
+  $release = node_load($node->project_issue['rid']);
   if (!preg_match(pift_test_release_regex(FALSE), $release->project_release['tag'])) {
     return FALSE;
   }
 
-  if (!in_array($node->sid, variable_get('pift_status', array()))) {
+  if (!in_array($node->project_issue['sid'], variable_get('pift_status', array()))) {
     return FALSE;
   }
 

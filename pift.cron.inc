@@ -160,13 +160,13 @@ function pift_cron_queue_batch_build() {
     $issue = node_load(($node_file ? $file['u_nid'] : $file['c_nid']));
 
     $batch['files'][] = array(
-      'branch_nid' => $issue->rid,
+      'branch_nid' => $issue->project_issue['rid'],
       'file_url' => file_create_url($file['filepath']),
       'issue_nid' => $issue->nid,
       'issue_cid' => ($file['c_cid'] ? $file['c_cid'] : 0),
     );
     $files[] = $file['fid'];
-    $branches[$issue->rid] = FALSE; // Do not test unless commit found.
+    $branches[$issue->project_issue['rid']] = FALSE; // Do not test unless commit found.
   }
 
   // Test the branches that are marked as needs testing or have never been tested.

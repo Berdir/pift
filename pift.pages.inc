@@ -14,7 +14,7 @@ function pift_pages_description_add(&$form, $form_state, $form_id) {
   global $user;
   if ($form_id == 'comment_form') {
     $node = node_load($form['nid']['#value']);
-    $nid = $node->pid;
+    $nid = $node->project_issue['pid'];
   }
   elseif ($form_id == 'project_issue_node_form') {
     $nid = $form['project_info']['pid']['#value'];
