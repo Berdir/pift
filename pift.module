@@ -201,8 +201,9 @@ function pift_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
       }
       break;
     case 'insert':
-      if (pift_test_check_criteria_issue($node)) {
-        $files = upload_load($node);
+      $proper = pift_nodeapi_clean($node);
+      if (pift_test_check_criteria_issue($proper)) {
+        $files = upload_load($proper);
         pift_test_add_files($files);
       }
       break;
@@ -210,6 +211,29 @@ function pift_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
       variable_set('pift_delete', TRUE);
       break;
   }
+}
+
+/**
+ * Cleanup the inconsistent project_issue property placement.
+ *
+ * In order to remove the need to a bunch of conditions all of PIFT, convert
+ * the inconsistent node format to the one used everyone else. The inconsistent
+ * format is only found during node creation, after a node has been created and
+ * hook_load() is used the properties are prefixed by project_issue.
+ *
+ * @param object $node Node to convert.
+ * @return object Properly formatted node.
+ * @link http://drupal.org/node/519562
+ */
+function pift_nodeapi_clean($node) {
+  $node->project_issue = array();
+
+  $fields = array('pid', 'rid', 'component', 'category', 'priority', 'assigned', 'sid');
+  foreach ($fields as $field) {
+    $node->project_issue[$field] = $node->$field;
+  }
+
+  return $node;
 }
 
 /**
