@@ -255,8 +255,13 @@ function pift_cron_retreive_results() {
                        array('@message' => xmlrpc_error_msg()), WATCHDOG_ERROR);
     }
     elseif (isset($response['response'])) {
-      watchdog('pift', 'Retrieval of test results did not succeed: @code.',
+      if ($response['response'] != PIFR_RESPONSE_ACCEPTED) {
+        watchdog('pift', 'Retrieval of test results did not succeed: @code.',
                array('@code' => $response['response']), WATCHDOG_ERROR);
+      }
+      else {
+        watchdog('pift', 'No test results to retrieve.');
+      }
     }
     elseif (isset($response['results'])) {
       foreach ($response['results'] as $result) {
