@@ -252,7 +252,8 @@ function pift_cron_get_release($pid, $tags) {
  * Retrieve test results since the last cron run.
  */
 function pift_cron_retreive_results() {
-  $next = pifr_server_xmlrpc_time_gmt(PIFT_LAST);
+  $last = db_result(db_query('SELECT MAX(last_tested) FROM {pift_test}'));
+  $next = pifr_server_xmlrpc_time_gmt($last ? $last : 0);
   while ($next) {
     $response = xmlrpc(PIFT_SERVER . '/xmlrpc.php', 'pifr.retrieve', PIFT_KEY, $next);
     $next = FALSE;
