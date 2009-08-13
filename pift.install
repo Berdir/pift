@@ -236,7 +236,7 @@ function pift_update_6202(&$sandbox = NULL) {
     $map = array();
     foreach ($lines as $line) {
       $parts = explode(',', $line);
-      $map[$parts[1]] = $parts[0];
+      $map[trim($parts[1])] = trim($parts[0]);
     }
 
     // Update old data and insert into test table.
