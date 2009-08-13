@@ -95,7 +95,7 @@ function pift_cron_test_release($min, $max) {
  */
 function pift_cron_queue_batch() {
   $i = 0;
-  while ((list($files, $batch) = pift_cron_queue_batch_build()) && $batch['projects']) {
+  while ((list($info, $batch) = pift_cron_queue_batch_build()) && $batch['projects']) {
     $response = xmlrpc(PIFT_SERVER . '/xmlrpc.php', 'pifr.queue', PIFT_KEY, $batch);
     if ($response === FALSE) {
       watchdog('pift', 'Failed to send test queue requests to server.', array(), WATCHDOG_ERROR);
@@ -107,13 +107,13 @@ function pift_cron_queue_batch() {
       // Store test records using assigned test IDs.
       foreach ($batch['branches'] as $key => $branch) {
         if (isset($response['branches'][$key])) {
-          pift_test_sent($response['branches'][$key], PIFT_TYPE_RELEASE, $batch['branches'][$key]['branch_nid']);
+          pift_test_sent($response['branches'][$key], PIFT_TYPE_RELEASE, $info['branches'][$key]);
         }
       }
 
       foreach ($response['files'] as $key => $file) {
         if (isset($response['files'][$key])) {
-          pift_test_sent($response['files'][$key], PIFT_TYPE_FILE, $files[$key]);
+          pift_test_sent($response['files'][$key], PIFT_TYPE_FILE, $info['files'][$key]);
         }
       }
     }
@@ -132,16 +132,22 @@ function pift_cron_queue_batch() {
 /**
  * Build the batch of tests to queue, using pifr.queue().
  *
- * @return array List of file IDs and batch of tests to queue.
+ * @return array Information needed to store test IDs, based on the
+ *   pifr.queue() standard.
  */
 function pift_cron_queue_batch_build() {
+  // Store information needed to save test IDs.
+  $info = array(
+    'branches' => array(),
+    'files' => array(),
+  );
+
   $batch = array(
     'branches' => array(),
     'files' => array(),
     'projects' => array(),
   );
   $branches = array();
-  $files = array();
   $projects = array();
 
   // Test all files that are marked as needs testing or have never been tested.
@@ -159,13 +165,13 @@ function pift_cron_queue_batch_build() {
     $node_file = ($file['u_nid'] ? TRUE : FALSE);
     $issue = node_load(($node_file ? $file['u_nid'] : $file['c_nid']));
 
-    $batch['files'][] = array(
+    $batch['files'][] = $item = array(
       'branch_nid' => $issue->project_issue['rid'],
       'file_url' => file_create_url($file['filepath']),
       'issue_nid' => $issue->nid,
       'issue_cid' => ($file['c_cid'] ? $file['c_cid'] : 0),
     );
-    $files[] = $file['fid'];
+    $info['files'][$item['branch_nid'] . ':' . $item['file_url']] = $file['fid'];
     $branches[$issue->project_issue['rid']] = FALSE; // Do not test unless commit found.
   }
 
@@ -201,6 +207,7 @@ function pift_cron_queue_batch_build() {
       }
     }
 
+    $info['branches'][$item['project_nid'] . ':' . $item['branch_nid']] = $item['branch_nid'];
     $batch['branches'][] = $item;
     $projects[] = $branch->project_release['pid'];
   }
@@ -218,7 +225,7 @@ function pift_cron_queue_batch_build() {
       'repository_url' => $repositories[$project->cvs['repository']]->root . $project->cvs['directory'],
     );
   }
-  return array($files, $batch);
+  return array($info, $batch);
 }
 
 /**
