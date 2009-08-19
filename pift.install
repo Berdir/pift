@@ -78,6 +78,24 @@ function pift_install() {
   db_query("UPDATE {system}
             SET weight = 3
             WHERE name = '%s'", 'pift');
+
+  // Check for pift_data and as such an update.
+  if (db_table_exists('pift_data')) {
+    // Set schema version just before first update to ensure that updates are
+    // triggered even though the module has been renamed.
+    register_shutdown_function('pift_install_force_update');
+  }
+}
+
+/**
+ * Force update by reverting schema.
+ *
+ * The schema must be reverted after hook_install() has finished.
+ */
+function pift_install_force_update() {
+  db_query("UPDATE {system}
+            SET schema_version = 6199
+            WHERE name = '%s'", 'pift');
 }
 
 /**
@@ -110,7 +128,7 @@ function pift_uninstall() {
 }
 
 /**
- * Remove old variables.
+ * Remove old variables an setup drupal.org defaults.
  */
 function pift_update_6200() {
   $ret = array();
@@ -134,87 +152,47 @@ function pift_update_6200() {
     'pift_server_auto_followup_sid',
   );
 
+  // Remove old variables.
   foreach ($vars as $var) {
     variable_del($var);
   }
 
-  return $ret;
-}
-
-/**
- * Install new schema.
- */
-function pift_update_6201() {
-  $schema['pift_test'] = array(
-    'description' => t('Stores test results.'),
-    'fields' => array(
-      'test_id' => array(
-        'description' => t('Unique test ID.'),
-        'type' => 'int',
-        'unsigned' => TRUE,
-        'not null' => TRUE,
-      ),
-      'type' => array(
-        'description' => t('Type of test, PIFT_TYPE_*.'),
-        'type' => 'int',
-        'unsigned' => TRUE,
-        'not null' => TRUE,
-      ),
-      'id' => array(
-        'description' => t('Related test detail record ID, either rid, or fid.'),
-        'type' => 'int',
-        'unsigned' => TRUE,
-        'not null' => TRUE,
-      ),
-      'status' => array(
-        'description' => t('Status of the test, PIFT_STATUS_*.'),
-        'type' => 'int',
-        'unsigned' => TRUE,
-        'not null' => TRUE,
-      ),
-      'message' => array(
-        'description' => t('Summary message of test result.'),
-        'type' => 'text',
-        'size' => 'big',
-        'not null' => TRUE,
-      ),
-      'last_tested' => array(
-        'description' => t('Timestamp when test results were last recieved.'),
-        'type' => 'int',
-        'not null' => TRUE,
-        'default' => 0,
-      ),
-    ),
-    'primary key' => array('test_id', 'type', 'id'),
-    'indexes' => array(
-      'status' => array('status'),
-      'last_tested' => array('last_tested'),
-    ),
-  );
-  $schema['pift_project'] = array(
-    'description' => t('Store project testing preference.'),
-    'fields' => array(
-      'pid' => array(
-        'description' => t('Reference to project NID.'),
-        'type' => 'serial',
-        'unsigned' => TRUE,
-        'not null' => TRUE,
-      ),
-    ),
-    'primary key' => array('pid'),
+  // List of default drupal.org values.
+  $vars = array(
+    'pift_frequency' => 0, // Per cron run.
+    'pift_server' => 'http://testing.drupal.org/',
+    'pift_description' => 'Only files ending in <em>.patch</em> or <em>.diff</em> will be sent for testing. '.
+                          'For patches that apply specifically to Drupal 5 or Drupal 6, you can prefix the extension ' .
+                          'with <em>-D5</em> or <em>-D6</em> to prevent them from being queued for testing. For example, ' .
+                          '<em>foo.patch</em> and <em>bar.diff</em> would both be queued for testing, whereas ' .
+                          '<em>foo-D5.patch</em> and <em>bar-D6.diff</em> would not be queued for testing.',
+    'pift_followup_fail' => 13, // Status: 'Needs work'.
+    'pift_followup_retest' => 8, // Status: 'Needs review'.
+    'pift_regex' => '/(\.diff|\.patch)$/', // TODO Need the d.o one that excludes -D5, -D6.
+    'pift_status' => array(8, 14), // Statuses: 'Needs review', 'reviewed & tested by the community'.
+    'pift_core' => array(7 => 7),
+    'pift_pid' => 3060, // Drupal core project NID.
+    'pift_retest' => 86400, // 1 day.
   );
 
-  $ret = array();
-  foreach ($schema as $name => $table) {
-    db_create_table($ret, $name, $table);
+  // Store each default variable value.
+  foreach ($vars as $key => $value) {
+    variable_set($key, $value);
   }
+
+  // Enable testing for the drupal project.
+  db_query('INSERT INTO {pift_project} (pid)
+            VALUES (%d)', 3060);
+
   return $ret;
 }
 
 /**
  * Update test records.
  */
-function pift_update_6202(&$sandbox = NULL) {
+function pift_update_6201(&$sandbox = NULL) {
+  $ret = array();
+
   if (!isset($sandbox['progress'])) {
     $sandbox['progress'] = 0;
     $sandbox['current_ftid'] = 0;
@@ -231,7 +209,7 @@ function pift_update_6202(&$sandbox = NULL) {
   );
 
   // Read in map of ftid => test_id provided from pifr server 1.x, in a comma
-  // delimited file of the format: file_id,ftid.
+  // delimited file of the format: file_id(test_id),ftid.
   if ($lines = file('http://testing.drupal.org/files.dump.txt')) {
     $map = array();
     foreach ($lines as $line) {
@@ -243,16 +221,17 @@ function pift_update_6202(&$sandbox = NULL) {
     $result = db_query_range('SELECT *
                               FROM {pift_data}
                               WHERE ftid > %d
-                              ORDER BY ftid ASC', $sandbox['ftid'], 0, 1000);
-    $count = 0;
+                              ORDER BY ftid ASC', $sandbox['current_ftid'], 0, 5000);
     while ($test = db_fetch_object($result)) {
-      // Remove link from display data.
-      $message = preg_replace('/\s+(<a|a) href.*?$/', '', $test->display_data);
+      // Only covert data that testing.drupal.org has a record of.
+      if (isset($map[$test->ftid])) {
+        // Remove link from display data.
+        $message = preg_replace('/\s+(<a|a) href.*?$/', '', $test->display_data);
 
-      db_query("INSERT INTO {pift_test} (test_id, type, id, status, message, last_tested)
-                VALUES (%d, %d, %d, %d, '%s', %d)",
-                $map[$test->ftid], PIFT_TYPE_FILE, $test->fid, $statuses[$test->status], $message, $test->timestamp);
-      $count++;
+        db_query("INSERT INTO {pift_test} (test_id, type, id, status, message, last_tested)
+                  VALUES (%d, %d, %d, %d, '%s', %d)",
+                  $map[$test->ftid], PIFT_TYPE_FILE, $test->fid, $statuses[$test->status], $message, $test->timestamp);
+      }
       $sandbox['progress']++;
       $sandbox['current_ftid'] = $test->ftid;
     }
@@ -260,14 +239,13 @@ function pift_update_6202(&$sandbox = NULL) {
     $ret['#finished'] = empty($sandbox['max']) ? 1 : ($sandbox['progress'] / $sandbox['max']);
   }
 
-  $new_count = db_result(db_query('SELECT COUNT(test_id) FROM {pift_test}'));
-  return array(array('success' => $count == $new_count, 'query' => 'Update test records.'));
+  return $ret;
 }
 
 /**
  * Remove old data.
  */
-function pift_update_6203() {
+function pift_update_6202() {
   $ret = array();
 
   $ret[] = update_sql('DROP TABLE {pift_data}');
