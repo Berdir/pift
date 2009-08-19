@@ -168,7 +168,7 @@ function pift_update_6200() {
                           '<em>foo-D5.patch</em> and <em>bar-D6.diff</em> would not be queued for testing.',
     'pift_followup_fail' => 13, // Status: 'Needs work'.
     'pift_followup_retest' => 8, // Status: 'Needs review'.
-    'pift_regex' => '/(\.diff|\.patch)$/', // TODO Need the d.o one that excludes -D5, -D6.
+    'pift_regex' => '/(?<![.\-_][Dd][56])(\.diff|\.patch)$/',
     'pift_status' => array(8, 14), // Statuses: 'Needs review', 'reviewed & tested by the community'.
     'pift_core' => array(7 => 7),
     'pift_pid' => 3060, // Drupal core project NID.
