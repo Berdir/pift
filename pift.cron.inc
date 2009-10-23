@@ -1,5 +1,6 @@
 <?php
 // $Id$
+
 /**
  * @file
  * Provide cron functions.
@@ -36,7 +37,7 @@ function pift_cron_retest() {
               JOIN {project_release_nodes} r
                 ON pi.rid = r.nid
 
-              WHERE pi.sid IN (" . implode(',', array_fill(0, count($sids), '%d')) . ")
+              WHERE pi.sid IN (" . db_placeholders($sids, 'int') . ")
               AND r.tag REGEXP '%s'
             )
             AND status > %d
@@ -94,8 +95,8 @@ function pift_cron_test_release($min, $max) {
  * Send the all test batches to testing server.
  */
 function pift_cron_queue_batch() {
-  $i = 0;
-  while ((list($info, $batch) = pift_cron_queue_batch_build()) && $batch['projects']) {
+  $i = 1;
+  while (($batch = pift_cron_queue_batch_build()) && $batch['projects']) {
     $response = xmlrpc(PIFT_SERVER . '/xmlrpc.php', 'pifr.queue', PIFT_KEY, $batch);
     if ($response === FALSE) {
       watchdog('pift', 'Failed to send test queue requests to server.', array(), WATCHDOG_ERROR);
@@ -104,16 +105,17 @@ function pift_cron_queue_batch() {
       watchdog('pift', 'Test queue request did not succeed: @code.', array('@code' => $response['response']), WATCHDOG_ERROR);
     }
     elseif (isset($response['branches']) && isset($response['files'])) {
-      // Store test records using assigned test IDs.
-      foreach ($batch['branches'] as $key => $branch) {
-        if (isset($response['branches'][$key])) {
-          pift_test_sent($response['branches'][$key], PIFT_TYPE_RELEASE, $info['branches'][$key]);
+      // Store branch test IDs using the client_identifier (branch NID).
+      foreach ($batch['branches'] as $branch) {
+        if (isset($response['branches'][$branch['client_identifier']])) {
+          pift_test_sent($response['branches'][$branch['client_identifier']], PIFT_TYPE_RELEASE, $branch['client_identifier']);
         }
       }
 
-      foreach ($response['files'] as $key => $file) {
-        if (isset($response['files'][$key])) {
-          pift_test_sent($response['files'][$key], PIFT_TYPE_FILE, $info['files'][$key]);
+      // Store file test IDs using the client_identifier (file ID).
+      foreach ($batch['files'] as $file) {
+        if (isset($response['files'][$file['client_identifier']])) {
+          pift_test_sent($response['files'][$file['client_identifier']], PIFT_TYPE_FILE, $file['client_identifier']);
         }
       }
     }
@@ -121,36 +123,54 @@ function pift_cron_queue_batch() {
       watchdog('pift', 'Invalid response to test queue request.', array(), WATCHDOG_ERROR);
     }
 
-    if (++$i == PIFT_XMLRPC_MAX_BATCHES) {
-      // Once the maximum number of batches has been sent break out of the loop
-      // and save the rest for the next cron run.
+    // Once the maximum number of batches has been sent break out of the loop
+    // and save the rest for the next cron run.
+    if ($i++ == PIFT_XMLRPC_MAX_BATCHES) {
       break;
     }
   }
 }
 
 /**
- * Build the batch of tests to queue, using pifr.queue().
+ * Build a batch of tests to queue.
  *
- * @return array Information needed to store test IDs, based on the
- *   pifr.queue() standard.
+ * @return array Complete batch array as defined by pifr.queue().
  */
 function pift_cron_queue_batch_build() {
-  // Store information needed to save test IDs.
-  $info = array(
-    'branches' => array(),
-    'files' => array(),
-  );
-
+  // Initialize basic batch structure.
   $batch = array(
     'branches' => array(),
     'files' => array(),
     'projects' => array(),
   );
+
+  // Provide arrays to keep track of the required branches and projects.
   $branches = array();
   $projects = array();
 
-  // Test all files that are marked as needs testing or have never been tested.
+  // Load files that need to be reviewed.
+  pift_cron_queue_batch_build_files($batch, $branches);
+
+  // Load branches that need to be reviewed.
+  pift_cron_queue_batch_build_branches($branches);
+
+  // Process the required branches and add related projects.
+  pift_cron_queue_batch_build_branches_process($batch, $branches);
+
+  // Generate project information for each required project.
+  pift_cron_queue_batch_build_projects($batch, $projects);
+
+  return $batch;
+}
+
+/**
+ * Load files that need to be reviewed and add them to the batch.
+ *
+ * @param array $batch Batch information.
+ * @param array $branches Branches that must be loaded.
+ */
+function pift_cron_queue_batch_build_files(array &$batch, array &$branches) {
+  // Load all files that are marked as needs testing or have never been tested.
   $result = db_query('SELECT f.fid, f.filepath, u.nid AS u_nid, cu.nid AS c_nid, cu.cid AS c_cid
                       FROM {pift_test} t
                       JOIN {files} f
@@ -162,20 +182,39 @@ function pift_cron_queue_batch_build() {
                       WHERE t.status = %d
                       LIMIT %d', PIFT_TYPE_FILE, PIFT_STATUS_QUEUE, PIFT_XMLRPC_MAX);
   while ($file = db_fetch_array($result)) {
-    $node_file = ($file['u_nid'] ? TRUE : FALSE);
-    $issue = node_load(($node_file ? $file['u_nid'] : $file['c_nid']));
+    // Load the issue related to the file, either from the comment or node.
+    $issue = node_load($file['u_nid'] ? $file['u_nid'] : $file['c_nid']);
 
-    $batch['files'][] = $item = array(
-      'branch_nid' => $issue->project_issue['rid'],
+    // Generate item information.
+    $item = array(
+      'branch_identifier' => $issue->project_issue['rid'],
+      'client_identifer' => $file['fid'],
       'file_url' => file_create_url($file['filepath']),
-      'issue_nid' => $issue->nid,
-      'issue_cid' => ($file['c_cid'] ? $file['c_cid'] : 0),
     );
-    $info['files'][$item['branch_nid'] . ':' . $item['file_url']] = $file['fid'];
+
+    // Generate link to file issue and comment if relevant.
+    if ($file['c_cid']) {
+      $item['link'] = url('node/' . $issue->nid, array('absolute' => TRUE, 'fragment' => '#comment-' . $file['c_cid']));
+    }
+    else {
+      $item['link'] = url('node/' . $issue->nid, array('absolute' => TRUE));
+    }
+
+    // Add file to batch.
+    $batch['files'][] = $item;
+
+    // Store branch as needed to be included with data.
     $branches[$issue->project_issue['rid']] = FALSE; // Do not test unless commit found.
   }
+}
 
-  // Test the branches that are marked as needs testing or have never been tested.
+/**
+ * Load branches that need to be reviewed.
+ *
+ * @param array $branches Branches that must be loaded.
+ */
+function pift_cron_queue_batch_build_branches(array &$branches) {
+  // Load the branches that are marked as needs testing or have never been tested.
   $result = db_query('SELECT t.id AS rid
                       FROM {pift_test} t
                       WHERE t.type = %d
@@ -184,48 +223,128 @@ function pift_cron_queue_batch_build() {
   while ($branch = db_fetch_array($result)) {
     $branches[$branch['rid']] = TRUE;
   }
+}
 
-  // Include branch data for all dependency branches and those that require testing.
+/**
+ * Process the required branches and add related projects.
+ *
+ * @param array $batch Batch information.
+ * @param array $branches Branches that must be loaded.
+ * @param array $projects List of required projects (pids).
+ */
+function pift_cron_queue_batch_build_branches_process(array &$batch, array &$branches, array &$projects) {
+  // Relase API version vocabulary.
+  $api_vid = _project_release_get_api_vid();
+
+  // Include branch data for all dependency branches and those that require review.
   foreach ($branches as $rid => $test) {
+    // Load branch release node.
     $branch = node_load($rid);
 
+    // Generate branch information.
     $item = array(
-      'branch_nid' => $branch->nid,
-      'project_nid' => $branch->project_release['pid'],
-      'identifier' => $branch->project_release['tag'],
+      'project_identifier' => $branch->project_release['pid'],
+      'client_identifier' => $branch->nid,
+      'vcs_identifier' => $branch->project_release['tag'],
+      'dependency' => '',
+      'plugin_argument' => array(),
       'test' => $test,
     );
-    if (PIFT_PID != $item['project_nid']) {
-      // Branch is not core branch so find out what core branch it is compatible with.
-      if (preg_match('/DRUPAL-(\d+)/', $item['identifier'], $match)) {
-        // Get the core branch compatible with the numeric version.
-        $rids = pift_cron_get_release(PIFT_PID, array($item['identifier']));
-        if ($rids) {
-          $item['core_branch_nid'] = $rid[0];
-          $branches[] = $rid[0];
+
+    // Attempt to determine the Drupal core API version.
+    if (!empty($branch->taxonomy)) {
+      foreach ($branch->taxonomy as $tid => $term) {
+        if ($term->vid == $api_vid) {
+          $api_version = array_shift(explode('.', $term->name, 2));
+          $api_tid = $term->tid;
         }
       }
     }
 
-    $info['branches'][$item['project_nid'] . ':' . $item['branch_nid']] = $item['branch_nid'];
+    // If the API version not found then ignore this branch.
+    if (empty($api_version)) {
+      watchdog('pift', 'Project release node [@nid] must have a Drupal core API taxonomy term.', array('@nid' => $branch->nid));
+      continue;
+    }
+
+    // If the project is Drupal core then add the plugin argument, otherwise
+    // determine the compatible core branch and add it as a dependency.
+    if (PIFT_PID == $item['project_nid']) {
+      $item['plugin_argument']['core'] = $api_version;
+    }
+    else {
+      // Load the Drupal core API release (branch) compatible with this branch.
+      $api_release = node_load(pift_cron_core_api_release($api_tid));
+      $item['dependency'] = $api_release;
+      $item['plugin_argument']['modules'] = array(); // TODO Include the list of modules.
+
+      // If the core branch has not already been added then add it.
+      if (!isset($branches[$api_release])) {
+        $branches[$api_release] = FALSE;
+        $projects[PIFT_PID] = PIFT_PID;
+      }
+    }
+
+    // Add item information to the batch.
     $batch['branches'][] = $item;
-    $projects[] = $branch->project_release['pid'];
+
+    // Add branch's project to list to be laoded.
+    $projects[$branch->project_release['pid']] = $branch->project_release['pid'];
+  }
+}
+
+/**
+ * Load the core release for the given API term ID.
+ *
+ * @param integer $api_tid Drupal core API compatibility term ID, of the
+ *   vocabulary defined by _project_release_get_api_vid.
+ * @return Drupal core release NID.
+ * @see _project_release_get_api_vid()
+ */
+function pift_cron_core_api_release($api_tid) {
+  static $api_releases = array();
+
+  if (!isset($api_branches[$api_tid])) {
+    $result = db_query('SELECT p.nid
+                        FROM {node} n
+                        JOIN {project_release_nodes} p
+                          ON p.nid = n.nid
+                        JOIN {term_node} t
+                          ON t.vid = n.vid
+                        WHERE p.pid = %d
+                        AND p.rebuild = %d
+                        AND t.tid = %d
+                        ORDER BY n.vid DESC
+                        LIMIT 1', PIFT_PID, 1, $api_tid);
+    $api_releases[$api_tid] = db_result($result);
   }
 
-  // Include project data for all branches.
+  return $api_releases[$api_tid];
+}
+
+/**
+ * Generate project information for each required project.
+ *
+ * @param array $batch Batch information.
+ * @param array $projects List of required projects (pids).
+ */
+function pift_cron_queue_batch_build_projects(array &$batch, array $projects) {
+  // Load CVS repositories.
   $repositories = cvs_get_repository_info();
-  $projects = array_unique($projects);
-  foreach ($projects as $project) {
-    $project = node_load($project);
+
+  // Cycle through each required project.
+  foreach ($projects as $pid) {
+    // Load project node.
+    $project = node_load($pid);
+
+    // Generate project information.
     $batch['projects'][] = array(
-      'project_nid' => $project->nid,
+      'client_identifier' => $project->nid,
       'name' => $project->title,
-      'type' => ($project->nid == PIFT_PID ? PIFR_SERVER_PROJECT_TYPE_CORE : PIFR_SERVER_PROJECT_TYPE_MODULE),
       'repository_type' => 'cvs',
       'repository_url' => $repositories[$project->cvs['repository']]->root . $project->cvs['directory'],
     );
   }
-  return array($info, $batch);
 }
 
 /**
@@ -239,7 +358,7 @@ function pift_cron_get_release($pid, $tags) {
   $result = db_query('SELECT nid
                       FROM {project_release_nodes}
                       WHERE pid = %d
-                      AND tag IN (' . implode(',', array_fill(0, count($tags), "'%s'")) . ')',
+                      AND tag IN (' . db_placeholders($tags, 'varchar') . ')',
                       array_merge(array($pid), $tags));
   $rids = array();
   while ($rid = db_result($result)) {
