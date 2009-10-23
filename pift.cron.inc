@@ -249,6 +249,7 @@ function pift_cron_queue_batch_build_branches_process(array &$batch, array &$bra
       'dependency' => '',
       'plugin_argument' => array(),
       'test' => $test,
+      'link' => url('node/' . $branch->nid, array('absolute' => TRUE)),
     );
 
     // Attempt to determine the Drupal core API version.
@@ -343,6 +344,7 @@ function pift_cron_queue_batch_build_projects(array &$batch, array $projects) {
       'name' => $project->title,
       'repository_type' => 'cvs',
       'repository_url' => $repositories[$project->cvs['repository']]->root . $project->cvs['directory'],
+      'link' => url('node/' . $project->nid, array('absolute' => TRUE)),
     );
   }
 }
