@@ -30,11 +30,6 @@ function pift_pages_description_add(&$form, $form_state, $form_id) {
  * Add testing setting.
  */
 function pift_pages_project_issue_settings(&$form, $form_state) {
-  if ($form['nid']['#value'] != PIFT_PID) {
-    // Only allow testing of core.
-    return;
-  }
-
   $form['issue']['#weight'] = -10;
   $form['issue']['#email'] = -8;
   $form['testing'] = array(
@@ -42,6 +37,7 @@ function pift_pages_project_issue_settings(&$form, $form_state) {
     '#title' => t('Testing'),
     '#collapsible' => TRUE,
     '#weight' => -9,
+    '#access' => user_access('pift enable project testing'),
   );
   $form['testing']['pift_enable'] = array(
     '#type' => 'checkbox',

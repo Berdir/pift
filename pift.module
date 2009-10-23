@@ -105,7 +105,10 @@ function pift_menu() {
  * Implementation of hook_perm().
  */
 function pift_perm() {
-  return array('pift re-test files');
+  return array(
+    'pift re-test files',
+    'pift enable project testing',
+  );
 }
 
 /**
