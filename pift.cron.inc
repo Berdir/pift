@@ -253,14 +253,7 @@ function pift_cron_queue_batch_build_branches_process(array &$batch, array &$bra
     );
 
     // Attempt to determine the Drupal core API version.
-    if (!empty($branch->taxonomy)) {
-      foreach ($branch->taxonomy as $tid => $term) {
-        if ($term->vid == $api_vid) {
-          $api_version = array_shift(explode('.', $term->name, 2));
-          $api_tid = $term->tid;
-        }
-      }
-    }
+    list($api_version, $api_tid) = pift_core_api($branch);
 
     // If the API version not found then ignore this branch.
     if (empty($api_version)) {
