@@ -12,15 +12,16 @@
  */
 function pift_pages_description_add(&$form, $form_state, $form_id) {
   global $user;
-  if ($form_id == 'comment_form') {
-    $node = node_load($form['nid']['#value']);
-    $nid = $node->project_issue['pid'];
-  }
-  elseif ($form_id == 'project_issue_node_form') {
-    $nid = $form['project_info']['pid']['#value'];
-  }
 
   if (isset($form['attachments']['wrapper']['new']['upload']) && pift_project_enabled($nid)) {
+    if ($form_id == 'comment_form') {
+      $node = node_load($form['nid']['#value']);
+      $nid = $node->project_issue['pid'];
+    }
+    elseif ($form_id == 'project_issue_node_form') {
+      $nid = $form['project_info']['pid']['#value'];
+    }
+
     $description = filter_xss_admin(PIFT_DESCRIPTION);
     $form['attachments']['wrapper']['new']['upload']['#description'] .= $description;
   }
