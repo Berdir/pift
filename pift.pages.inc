@@ -65,7 +65,7 @@ function pift_pages_project_issue_settings_submit($form, &$form_state) {
   }
   else if (!$form_state['values']['pift_enable'] && $enabled) {
     db_query('DELETE FROM {pift_project}
-              WHERE project_nid = %d', $form_state['values']['nid']);
+              WHERE pid = %d', $form_state['values']['nid']);
   }
 }
 
