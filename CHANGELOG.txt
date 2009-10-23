@@ -1,0 +1,5 @@
+// $Id$
+
+PIFT 6.x-2.x, xxxx-xx-xx (development version)
+------------------------
+- Initial 2.x release.
