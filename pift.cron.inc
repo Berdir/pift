@@ -17,33 +17,42 @@ function pift_cron_retest() {
     return;
   }
 
+  $api_versions = variable_get('pift_core', array());
   $sids = variable_get('pift_status', array());
-  $retest_time = time() - PIFT_RETEST;
-  db_query("UPDATE {pift_test}
-            SET status = %d
-            WHERE type = %d
-            AND id IN (
-              SELECT f.fid
-              FROM {files} f
-              LEFT JOIN {upload} u
-                ON f.fid = u.fid
-              LEFT JOIN {comment_upload} cu
-                ON f.fid = cu.fid
 
-              JOIN {project_issues} pi
-                ON (u.nid = pi.nid OR cu.nid = pi.nid)
-              JOIN {pift_project} p
-                ON pi.pid = p.pid
-              JOIN {project_release_nodes} r
-                ON pi.rid = r.nid
+  // Only attempt query if both values are not empty.
+  if ($api_versions && $sids) {
+    $retest_time = time() - PIFT_RETEST;
+    db_query("UPDATE {pift_test}
+              SET status = %d
+              WHERE type = %d
+              AND id IN (
+                SELECT f.fid
+                FROM {files} f
+                LEFT JOIN {upload} u
+                  ON f.fid = u.fid
+                LEFT JOIN {comment_upload} cu
+                  ON f.fid = cu.fid
 
-              WHERE pi.sid IN (" . db_placeholders($sids, 'int') . ")
-              AND r.tag REGEXP '%s'
-            )
-            AND status > %d
-            AND last_tested < %d",
-            array_merge(array(PIFT_STATUS_QUEUE), array(PIFT_TYPE_FILE), $sids,
-                        array(pift_test_release_regex(TRUE)), array(PIFT_STATUS_SENT), array($retest_time)));
+                JOIN {project_issues} pi
+                  ON (u.nid = pi.nid OR cu.nid = pi.nid)
+                JOIN {pift_project} p
+                  ON pi.pid = p.pid
+                JOIN {project_release_nodes} r
+                  ON pi.rid = r.nid
+
+                JOIN {node} n
+                  ON r.nid = n.nid
+                JOIN {term_node} t
+                  ON (n.vid = t.vid AND t.tid IN(" . db_placeholders($api_versions, 'int') . "))
+
+                WHERE pi.sid IN (" . db_placeholders($sids, 'int') . ")
+              )
+              AND status > %d
+              AND last_tested < %d",
+              array_merge(array(PIFT_STATUS_QUEUE, PIFT_TYPE_FILE), $api_versions, $sids,
+                          array(PIFT_STATUS_SENT, $retest_time)));
+  }
 }
 
 /**
