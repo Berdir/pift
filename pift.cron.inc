@@ -275,7 +275,7 @@ function pift_cron_queue_batch_build_branches_process(array &$batch, array &$bra
     }
     else {
       // Load the Drupal core API release (branch) compatible with this branch.
-      $api_release = node_load(pift_cron_core_api_release($api_tid));
+      $api_release = node_load(pift_core_api_release($api_tid));
       $item['dependency'] = $api_release;
       $item['plugin_argument']['modules'] = array(); // TODO Include the list of modules.
 
@@ -292,35 +292,6 @@ function pift_cron_queue_batch_build_branches_process(array &$batch, array &$bra
     // Add branch's project to list to be laoded.
     $projects[$branch->project_release['pid']] = $branch->project_release['pid'];
   }
-}
-
-/**
- * Load the core release for the given API term ID.
- *
- * @param integer $api_tid Drupal core API compatibility term ID, of the
- *   vocabulary defined by _project_release_get_api_vid.
- * @return Drupal core release NID.
- * @see _project_release_get_api_vid()
- */
-function pift_cron_core_api_release($api_tid) {
-  static $api_releases = array();
-
-  if (!isset($api_branches[$api_tid])) {
-    $result = db_query('SELECT p.nid
-                        FROM {node} n
-                        JOIN {project_release_nodes} p
-                          ON p.nid = n.nid
-                        JOIN {term_node} t
-                          ON t.vid = n.vid
-                        WHERE p.pid = %d
-                        AND p.rebuild = %d
-                        AND t.tid = %d
-                        ORDER BY n.vid DESC
-                        LIMIT 1', PIFT_PID, 1, $api_tid);
-    $api_releases[$api_tid] = db_result($result);
-  }
-
-  return $api_releases[$api_tid];
 }
 
 /**
