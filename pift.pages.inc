@@ -13,8 +13,11 @@
 function pift_pages_description_add(&$form, $form_state, $form_id) {
   global $user;
 
-  if (isset($form['attachments']['wrapper']['new']['upload']) && pift_project_enabled($nid)) {
-    if ($form_id == 'comment_form') {
+  // Add description on uploads if it is set.
+  if (PIFT_DESCRIPTION) {
+    // Detect project issue node ID.
+    $nid = NULL;
+    if ($form_id == 'comment_form' && isset($form['original_issue'])) {
       $node = node_load($form['nid']['#value']);
       $nid = $node->project_issue['pid'];
     }
@@ -22,8 +25,10 @@ function pift_pages_description_add(&$form, $form_state, $form_id) {
       $nid = $form['project_info']['pid']['#value'];
     }
 
-    $description = filter_xss_admin(PIFT_DESCRIPTION);
-    $form['attachments']['wrapper']['new']['upload']['#description'] .= $description;
+    if (isset($form['attachments']['wrapper']['new']['upload']) && $nid && pift_project_enabled($nid)) {
+      $description = filter_xss_admin(PIFT_DESCRIPTION);
+      $form['attachments']['wrapper']['new']['upload']['#description'] .= $description;
+    }
   }
 }
 
