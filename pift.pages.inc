@@ -48,7 +48,8 @@ function pift_pages_project_issue_settings(&$form, $form_state) {
   $form['testing']['pift_enable'] = array(
     '#type' => 'checkbox',
     '#title' => t('Enable automated testing'),
-    '#description' => t('Enable automated testing of 7.x releases and patches.'),
+    '#description' => t('Enable automated testing of @versions compatible branches and patches.',
+      array('@versions' => implode('.x, ', variable_get('pift_core', array())) . '.x')),
     '#default_value' => pift_project_enabled($form['nid']['#value']),
   );
   $form['#submit'][] = 'pift_pages_project_issue_settings_submit';
