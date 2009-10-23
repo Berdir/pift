@@ -108,6 +108,7 @@ function pift_admin_settings_form() {
     '#options' => array(
       6 => t('6.x'),
       7 => t('7.x'),
+      8 => t('8.x'),
     ),
     '#default_value' => variable_get('pift_core', array()),
   );
