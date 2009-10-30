@@ -2,6 +2,13 @@
 // $Id$
 
 /**
+ * @file
+ * Provide schema and installation functions.
+ *
+ * Copyright 2008-2009 by Jimmy Berry ("boombatower", http://drupal.org/user/214218)
+ */
+
+/**
  * Implementation of hook_schema().
  */
 function pift_schema() {
@@ -210,7 +217,7 @@ function pift_update_6201(&$sandbox = NULL) {
 
   // Read in map of ftid => test_id provided from pifr server 1.x, in a comma
   // delimited file of the format: file_id(test_id),ftid.
-  if ($lines = file('http://testing.drupal.org/files.dump.txt')) {
+  if ($lines = file(drupal_get_path('module', 'pift') . '/pifr.file.map')) {
     $map = array();
     foreach ($lines as $line) {
       $parts = explode(',', $line);
