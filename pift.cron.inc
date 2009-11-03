@@ -203,7 +203,7 @@ function pift_cron_queue_batch_build_files(array &$batch, array &$branches) {
 
     // Generate link to file issue and comment if relevant.
     if ($file['c_cid']) {
-      $item['link'] = url('node/' . $issue->nid, array('absolute' => TRUE, 'fragment' => '#comment-' . $file['c_cid']));
+      $item['link'] = url('node/' . $issue->nid, array('absolute' => TRUE, 'fragment' => 'comment-' . $file['c_cid']));
     }
     else {
       $item['link'] = url('node/' . $issue->nid, array('absolute' => TRUE));
