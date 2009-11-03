@@ -283,7 +283,7 @@ function pift_cron_queue_batch_build_branches_process(array &$batch, array &$bra
 
       // If the core branch has not already been added then add it.
       if (!isset($branches[$api_release])) {
-        $branches[$api_release] = FALSE;
+        $branches[$api_release->nid] = FALSE;
         $projects[PIFT_PID] = PIFT_PID;
       }
     }
