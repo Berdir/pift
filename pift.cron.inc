@@ -106,7 +106,7 @@ function pift_cron_test_release($min, $max) {
 function pift_cron_queue_batch() {
   $i = 1;
   while (($batch = pift_cron_queue_batch_build()) && $batch['projects']) {
-    $response = xmlrpc(PIFT_SERVER . '/xmlrpc.php', 'pifr.queue', PIFT_KEY, $batch);
+    $response = xmlrpc(PIFT_SERVER . 'xmlrpc.php', 'pifr.queue', PIFT_KEY, $batch);
     if ($response === FALSE) {
       watchdog('pift', 'Failed to send test queue requests to server.', array(), WATCHDOG_ERROR);
     }
@@ -197,7 +197,7 @@ function pift_cron_queue_batch_build_files(array &$batch, array &$branches) {
     // Generate item information.
     $item = array(
       'branch_identifier' => $issue->project_issue['rid'],
-      'client_identifer' => $file['fid'],
+      'client_identifier' => $file['fid'],
       'file_url' => file_create_url($file['filepath']),
     );
 
@@ -278,7 +278,7 @@ function pift_cron_queue_batch_build_branches_process(array &$batch, array &$bra
     else {
       // Load the Drupal core API release (branch) compatible with this branch.
       $api_release = node_load(pift_core_api_release($api_tid));
-      $item['dependency'] = $api_release;
+      $item['dependency'] = $api_release->nid;
       $item['plugin_argument']['modules'] = array(); // TODO Include the list of modules.
 
       // If the core branch has not already been added then add it.
@@ -349,7 +349,7 @@ function pift_cron_retreive_results() {
   $last = db_result(db_query('SELECT MAX(last_tested) FROM {pift_test}'));
   $next = pifr_server_xmlrpc_time_gmt($last ? $last : 0);
   while ($next) {
-    $response = xmlrpc(PIFT_SERVER . '/xmlrpc.php', 'pifr.retrieve', PIFT_KEY, $next);
+    $response = xmlrpc(PIFT_SERVER . 'xmlrpc.php', 'pifr.retrieve', PIFT_KEY, $next);
     $next = FALSE;
 
     if ($response === FALSE) {
