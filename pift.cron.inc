@@ -312,13 +312,20 @@ function pift_cron_queue_batch_build_projects(array &$batch, array $projects) {
     $project = node_load($pid);
 
     // Generate project information.
-    $batch['projects'][] = array(
+    $item = array(
       'client_identifier' => $project->nid,
       'name' => $project->title,
       'repository_type' => 'cvs',
       'repository_url' => $repositories[$project->cvs['repository']]->root . $project->cvs['directory'],
       'link' => url('node/' . $project->nid, array('absolute' => TRUE)),
     );
+
+    if ($project->nid == PIFT_PID) {
+      // Drupal core directory is set to '/' and needs to be '/drupal'.
+      $item['repository_url'] .= 'drupal';
+    }
+
+    $batch['projects'][] = $item;
   }
 }
 
