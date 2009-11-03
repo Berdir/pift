@@ -164,7 +164,7 @@ function pift_cron_queue_batch_build() {
   pift_cron_queue_batch_build_branches($branches);
 
   // Process the required branches and add related projects.
-  pift_cron_queue_batch_build_branches_process($batch, $branches);
+  pift_cron_queue_batch_build_branches_process($batch, $branches, $projects);
 
   // Generate project information for each required project.
   pift_cron_queue_batch_build_projects($batch, $projects);
