@@ -17,7 +17,7 @@ function pift_cron_retest() {
     return;
   }
 
-  $api_versions = variable_get('pift_core', array());
+  $api_versions = array_filter(variable_get('pift_core', array()));
   $sids = variable_get('pift_status', array());
 
   // Only attempt query if both values are not empty.

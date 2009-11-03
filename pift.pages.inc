@@ -45,11 +45,12 @@ function pift_pages_project_issue_settings(&$form, $form_state) {
     '#weight' => -9,
     '#access' => user_access('pift enable project testing'),
   );
+  $versions = array_filter(variable_get('pift_core', array()));
   $form['testing']['pift_enable'] = array(
     '#type' => 'checkbox',
     '#title' => t('Enable automated testing'),
     '#description' => t('Enable automated testing of @versions compatible branches and patches.',
-      array('@versions' => implode('.x, ', variable_get('pift_core', array())) . '.x')),
+      array('@versions' => implode('.x, ', $versions) . '.x')),
     '#default_value' => pift_project_enabled($form['nid']['#value']),
   );
   $form['#submit'][] = 'pift_pages_project_issue_settings_submit';

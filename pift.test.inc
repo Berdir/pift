@@ -117,7 +117,7 @@ function pift_test_check_criteria_issue($node) {
 
   $release = node_load($node->project_issue['rid']);
   list($api_version, $api_tid) = pift_core_api($release);
-  if (!in_array($api_version, variable_get('pift_core', array()))) {
+  if (!in_array($api_version, array_filter(variable_get('pift_core', array())))) {
     return FALSE;
   }
 
