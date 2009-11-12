@@ -354,7 +354,7 @@ function pift_cron_get_release($pid, $tags) {
  */
 function pift_cron_retreive_results() {
   $last = db_result(db_query('SELECT MAX(last_tested) FROM {pift_test}'));
-  $next = pifr_server_xmlrpc_time_gmt($last ? $last : 0);
+  $next = pifr_server_xmlrpc_time_gmt($last ? $last : 1);
   while ($next) {
     $response = xmlrpc(PIFT_SERVER . 'xmlrpc.php', 'pifr.retrieve', PIFT_KEY, $next);
     $next = FALSE;
