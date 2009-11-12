@@ -272,7 +272,7 @@ function pift_cron_queue_batch_build_branches_process(array &$batch, array &$bra
 
     // If the project is Drupal core then add the plugin argument, otherwise
     // determine the compatible core branch and add it as a dependency.
-    if (PIFT_PID == $item['project_nid']) {
+    if (PIFT_PID == $item['project_identifier']) {
       $item['plugin_argument']['core'] = $api_version;
     }
     else {
