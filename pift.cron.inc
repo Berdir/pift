@@ -23,35 +23,38 @@ function pift_cron_retest() {
   // Only attempt query if both values are not empty.
   if ($api_versions && $sids) {
     $retest_time = time() - PIFT_RETEST;
-    db_query("UPDATE {pift_test}
-              SET status = %d
-              WHERE type = %d
-              AND id IN (
-                SELECT f.fid
-                FROM {files} f
-                LEFT JOIN {upload} u
-                  ON f.fid = u.fid
-                LEFT JOIN {comment_upload} cu
-                  ON f.fid = cu.fid
 
-                JOIN {project_issues} pi
-                  ON (u.nid = pi.nid OR cu.nid = pi.nid)
-                JOIN {pift_project} p
-                  ON pi.pid = p.pid
-                JOIN {project_release_nodes} r
-                  ON pi.rid = r.nid
+    foreach (array('u.nid = pi.nid', 'cu.nid = pi.nid') as $clause) {
+      db_query("UPDATE {pift_test}
+                SET status = %d
+                WHERE type = %d
+                AND id IN (
+                  SELECT f.fid
+                  FROM {files} f
+                  LEFT JOIN {upload} u
+                    ON f.fid = u.fid
+                  LEFT JOIN {comment_upload} cu
+                    ON f.fid = cu.fid
 
-                JOIN {node} n
-                  ON r.nid = n.nid
-                JOIN {term_node} t
-                  ON (n.vid = t.vid AND t.tid IN(" . db_placeholders($api_versions, 'int') . "))
+                  JOIN {project_issues} pi
+                    ON " . $clause . "
+                  JOIN {pift_project} p
+                    ON pi.pid = p.pid
+                  JOIN {project_release_nodes} r
+                    ON pi.rid = r.nid
 
-                WHERE pi.sid IN (" . db_placeholders($sids, 'int') . ")
-              )
-              AND status > %d
-              AND last_tested < %d",
-              array_merge(array(PIFT_STATUS_QUEUE, PIFT_TYPE_FILE), $api_versions, $sids,
-                          array(PIFT_STATUS_SENT, $retest_time)));
+                  JOIN {node} n
+                    ON r.nid = n.nid
+                  JOIN {term_node} t
+                    ON (n.vid = t.vid AND t.tid IN(" . db_placeholders($api_versions, 'int') . "))
+
+                  WHERE pi.sid IN (" . db_placeholders($sids, 'int') . ")
+                )
+                AND status > %d
+                AND last_tested < %d",
+                array_merge(array(PIFT_STATUS_QUEUE, PIFT_TYPE_FILE), $api_versions, $sids,
+                            array(PIFT_STATUS_SENT, $retest_time)));
+    }
   }
 }
 
