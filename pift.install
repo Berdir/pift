@@ -52,10 +52,11 @@ function pift_schema() {
         'default' => 0,
       ),
     ),
-    'primary key' => array('test_id', 'type', 'id'),
+    'primary key' => array('type', 'id', 'test_id'),
     'indexes' => array(
       'status' => array('status'),
       'last_tested' => array('last_tested'),
+      'type_id' => array('type', 'id'),
     ),
   );
   $schema['pift_project'] = array(
