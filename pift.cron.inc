@@ -432,19 +432,28 @@ function pift_cron_check_auto_followup(array $result) {
     // Test did not pass, make sure that test is for a file.
     $test = pift_test_get($result['test_id']);
     if ($test['fid']) {
-      // Get the current issue state and ensure that the test is the last one for
-      // the particular issue.
-      $test_id = db_result(db_query('SELECT t.test_id
-                                     FROM {pift_test} t
-                                     LEFT JOIN {upload} u
-                                       ON (t.type = %d AND t.id = u.fid)
-                                     LEFT JOIN {comment_upload} cu
-                                       ON (t.type = %d AND t.id = cu.fid)
-                                     JOIN {project_issues} i
-                                       ON (u.nid = i.nid OR cu.nid = i.nid)
-                                     WHERE u.nid = %d OR cu.nid = %d
-                                     ORDER BY t.id DESC
-                                     LIMIT 1', PIFT_TYPE_FILE, PIFT_TYPE_FILE, $test['nid'], $test['nid']));
+      // Get the current issue state and ensure that the test is the last one
+      // for the particular issue. Cycle through clauses to remove the need for
+      // an OR clause and thus improve performance.
+      $results = array();
+      foreach (array('u.nid = i.nid', 'cu.nid = i.nid') as $clause) {
+        $result = db_query('SELECT t.test_id, t.id
+                            FROM {pift_test} t
+                            LEFT JOIN {upload} u
+                              ON (t.type = %d AND t.id = u.fid)
+                            LEFT JOIN {comment_upload} cu
+                              ON (t.type = %d AND t.id = cu.fid)
+                            JOIN {project_issues} i
+                              ON ' . $clause . '
+                            WHERE u.nid = %d OR cu.nid = %d
+                            ORDER BY t.id DESC
+                            LIMIT 1', PIFT_TYPE_FILE, PIFT_TYPE_FILE, $test['nid'], $test['nid']);
+        $results[] = db_fetch_array($result);
+      }
+
+      // To simulate OR clause and descending order by 'id' select the test_id
+      // that has the highest 'id' value.
+      $test_id = $results[0]['id'] > $results[1]['id'] ? $results[0]['test_id'] : $results[1]['test_id'];
 
       if ($test_id == $test['test_id'] && pift_test_check_criteria_issue(node_load($test['nid']))) {
         // Test is last one for the particular issue and still fits the criteria.
