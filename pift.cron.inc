@@ -24,6 +24,7 @@ function pift_cron_retest() {
   if ($api_versions && $sids) {
     $retest_time = time() - PIFT_RETEST;
 
+    // Loop over 'ON' clause to remove an 'OR' which should be more efficient.
     foreach (array('u.nid = pi.nid', 'cu.nid = pi.nid') as $clause) {
       db_query("UPDATE {pift_test}
                 SET status = %d
@@ -46,7 +47,7 @@ function pift_cron_retest() {
                   JOIN {node} n
                     ON r.nid = n.nid
                   JOIN {term_node} t
-                    ON (n.vid = t.vid AND t.tid IN(" . db_placeholders($api_versions, 'int') . "))
+                    ON (n.vid = t.vid AND t.tid IN (" . db_placeholders($api_versions, 'int') . "))
 
                   WHERE pi.sid IN (" . db_placeholders($sids, 'int') . ")
                 )
