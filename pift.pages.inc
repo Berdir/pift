@@ -118,7 +118,7 @@ function pift_pages_retest_confirm_form_submit($form, &$form_state) {
     project_issue_add_auto_followup(array(
       'nid' => $test['nid'],
       'sid' => PIFT_FOLLOWUP_RETEST,
-      'comment' => theme('pift_auto_followup', 'retest', $test['nid'], $test['cid']),
+      'comment' => theme('pift_auto_followup', 'retest', $test['nid'], $test['cid'], $test['title']),
     ));
 
     db_query('UPDATE {pift_test}

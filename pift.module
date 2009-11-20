@@ -124,9 +124,10 @@ function pift_theme() {
     ),
     'pift_auto_followup' => array(
       'arguments' => array(
-        'message' => '',
+        'type' => '',
         'nid' => 0,
         'cid' => 0,
+        'filename' => '',
       ),
     ),
   );
@@ -309,20 +310,26 @@ function pift_comment_load_node($comment) {
 /**
  * Theme the auto followup comments.
  *
- * @param string $message Comment message.
+ * @param string $type Type of following, either: 'retest' or 'fail'.
  * @param integer $nid Node ID containting the failed test.
  * @param integer $cid Comment ID, if applicable, containing the failed test.
+ * @param string $filename Name of file.
  * @return string HTML output.
  */
-function theme_pift_auto_followup($type, $nid, $cid) {
+function theme_pift_auto_followup($type, $nid, $cid, $filename) {
   global $user;
+
+  $args = array(
+    '!user' => theme('username', $user),
+    '@id' => "pift-results-$nid" . ($cid ? "-$cid" : ''),
+    '@cid' => $cid, '@file' => $filename,
+    '@filename' => $title,
+  );
   if ($type == 'retest') {
-    return t('!user requested that <a href="#@id">failed test</a> be re-tested.',
-              array('!user' => theme('username', $user), '@id' => "pift-results-$nid" . ($cid ? "-$cid" : '')));
+    return t('Re-test of @filename from comment <a href="#@id">#@cid</a> was requested by @user.', $args);
   }
   elseif ($type == 'fail') {
-    return t('The last submitted patch <a href="#@id">failed testing</a>.',
-               array('@id' => "pift-results-$nid" . ($cid ? "-$cid" : '')));
+    return t('The last submitted patch, <a href="#@id">@filename</a>, failed testing.', $args);
   }
   return '';
 }

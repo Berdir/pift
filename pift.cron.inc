@@ -457,7 +457,7 @@ function pift_cron_check_auto_followup(array $result) {
 
       if ($test_id == $test['test_id'] && pift_test_check_criteria_issue(node_load($test['nid']))) {
         // Test is last one for the particular issue and still fits the criteria.
-        pift_cron_auto_followup($test['nid'], $test['cid']);
+        pift_cron_auto_followup($test['nid'], $test['cid'], $test['filename']);
       }
     }
   }
@@ -468,11 +468,12 @@ function pift_cron_check_auto_followup(array $result) {
  *
  * @param integer $nid Node ID to post the followup on.
  * @param integer $cid Comment ID, if applicable, containing the failed test.
+ * @param string $filename Name of file.
  */
-function pift_cron_auto_followup($nid, $cid) {
+function pift_cron_auto_followup($nid, $cid, $filename) {
   project_issue_add_auto_followup(array(
     'nid' => $nid,
     'sid' => PIFT_FOLLOWUP_FAIL,
-    'comment' => theme('pift_auto_followup', 'fail', $nid, $cid),
+    'comment' => theme('pift_auto_followup', 'fail', $nid, $cid, $filename),
   ));
 }
