@@ -143,9 +143,10 @@ function pift_pages_retest_confirm_form_submit($form, &$form_state) {
  * Theme attachments into a table with test results.
  *
  * @param array $files List of file attachments.
+ * @param boolean $closed Issue is closed.
  * @return string HTML output.
  */
-function theme_pift_attachments(array $files) {
+function theme_pift_attachments(array $files, $closed) {
   $header = array(t('Attachment'), t('Size'), t('Status'), t('Test result'), t('Operations'));
   $rows = array();
   foreach ($files as $file) {
@@ -169,7 +170,7 @@ function theme_pift_attachments(array $files) {
     if ($file['status'] > PIFT_STATUS_QUEUE || $file['message']) {
       $operations[] = l(t('View details'), PIFT_SERVER . 'pifr/test/' . $file['test_id']);
     }
-    if ($file['status'] > PIFT_STATUS_SENT) {
+    if ($file['status'] > PIFT_STATUS_SENT && !$closed) {
       $operations[] = l(t('Re-test'), 'pift/retest/' . $file['test_id']);
     }
     $row[] = ($operations ? implode(' | ', $operations) : '<em>' . t('None') . '</em>');
