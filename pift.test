@@ -52,6 +52,7 @@ class PIFTTestCase extends DrupalWebTestCase {
       'name' => 'drupal-core',
       'method' => 1, // Use external script to insert data, thus never retrieve.
       'root' => ':pserver:anonymous:anonymous@cvs.drupal.org:/cvs/drupal',
+      'modules' => 'drupal',
     );
     $this->drupalPost('admin/project/cvs-repositories/add', $edit, t('Save repository'));
     $this->assertText(t('Added CVS repository: @name', array('@name' => $edit['name'])));
@@ -61,6 +62,7 @@ class PIFTTestCase extends DrupalWebTestCase {
       'name' => 'drupal-contrib',
       'method' => 1, // Use external script to insert data, thus never retrieve.
       'root' => ':pserver:anonymous:anonymous@cvs.drupal.org:/cvs/drupal-contrib',
+      'modules' => 'contributions',
     );
     $this->drupalPost('admin/project/cvs-repositories/add', $edit, t('Save repository'));
     $this->assertText(t('Added CVS repository: @name', array('@name' => $edit['name'])));
@@ -103,6 +105,7 @@ class PIFTTestCase extends DrupalWebTestCase {
       'project[uri]' => 'test',
       'cvs[repository]' => 2, // Contrib CVS repository.
       'cvs[directory]' => '/modules/simpletest',
+      'body' => $this->randomName(32),
     );
     $this->drupalPost('node/add/project-project', $edit, t('Save'));
     $this->testProject = node_load(array('title' => $edit['title']));
@@ -246,13 +249,13 @@ class PIFTTestCase extends DrupalWebTestCase {
       $this->fail(t('Attachment not found (n: @nid, c: @cid).', array('@nid' => $nid, '@cid' => $cid)));
     }
   }
-  
+
   /**
    * Check for standard (upload, comment_upload generated) attachment table.
    */
   protected function checkAttachmentStandard($nid, $cid) {
     $result = $this->xpath('//div[@id="pift-results-' . $nid . ($cid ? "-$cid" : '') . '"]');
-    
+
     $this->assertFalse($result, t('Attachment not found (n: @nid, c: @cid).', array('@nid' => $nid, '@cid' => $cid)));
   }
 

@@ -315,19 +315,24 @@ function pift_cron_queue_batch_build_projects(array &$batch, array $projects) {
     // Load project node.
     $project = node_load($pid);
 
+    // Load repository information.
+    $repository = $repositories[$project->cvs['repository']];
+
     // Generate project information.
     $item = array(
       'client_identifier' => $project->nid,
       'name' => $project->title,
       'repository_type' => 'cvs',
-      'repository_url' => $repositories[$project->cvs['repository']]->root . $project->cvs['directory'],
+      'repository_url' => $repository->root,
       'link' => url('node/' . $project->nid, array('absolute' => TRUE)),
     );
 
-    if ($project->nid == PIFT_PID) {
-      // Drupal core directory is set to '/' and needs to be '/drupal'.
-      $item['repository_url'] .= 'drupal';
+    // Non-core projects need the CVS module path information added.
+    if ($project->nid != PIFT_PID) {
+      $item['repository_url'] .= '/' . $repository->modules;
     }
+
+    $item['repository_url'] .= $project->cvs['directory'];
 
     $batch['projects'][] = $item;
   }
