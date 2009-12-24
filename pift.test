@@ -94,7 +94,7 @@ class PIFTTestCase extends DrupalWebTestCase {
       'title' => 'Drupal',
       'project[uri]' => 'drupal',
       'cvs[repository]' => 1, // Core CVS repository.
-      'cvs[directory]' => '/drupal',
+      'cvs[directory]' => '/',
     );
     $this->drupalPost('node/add/project-project', $edit, t('Save'));
     $this->drupalProject = node_load(array('title' => $edit['title']));

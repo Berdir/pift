@@ -323,16 +323,9 @@ function pift_cron_queue_batch_build_projects(array &$batch, array $projects) {
       'client_identifier' => $project->nid,
       'name' => $project->title,
       'repository_type' => 'cvs',
-      'repository_url' => $repository->root,
+      'repository_url' => rtrim($repository->root . '/' . $repository->modules . $project->cvs['directory'], '/'),
       'link' => url('node/' . $project->nid, array('absolute' => TRUE)),
     );
-
-    // Non-core projects need the CVS module path information added.
-    if ($project->nid != PIFT_PID) {
-      $item['repository_url'] .= '/' . $repository->modules;
-    }
-
-    $item['repository_url'] .= $project->cvs['directory'];
 
     $batch['projects'][] = $item;
   }
