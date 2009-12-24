@@ -325,11 +325,11 @@ function theme_pift_auto_followup($type, $nid, $cid, $filename) {
   $args = array(
     '!user' => theme('username', $user),
     '@id' => "pift-results-$nid" . ($cid ? "-$cid" : ''),
-    '@cid' => $cid, '@file' => $filename,
-    '@filename' => $title,
+    '@cid' => $cid,
+    '@filename' => $filename,
   );
   if ($type == 'retest') {
-    return t('Re-test of @filename from comment <a href="#@id">#@cid</a> was requested by @user.', $args);
+    return t('Re-test of @filename from comment <a href="#@id">#@cid</a> was requested by !user.', $args);
   }
   elseif ($type == 'fail') {
     return t('The last submitted patch, <a href="#@id">@filename</a>, failed testing.', $args);
