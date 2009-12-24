@@ -295,7 +295,7 @@ function pift_cron_queue_batch_build_branches_process(array &$batch, array &$bra
     // Add item information to the batch.
     $batch['branches'][] = $item;
 
-    // Add branch's project to list to be laoded.
+    // Add branch's project to list to be loaded.
     $projects[$branch->project_release['pid']] = $branch->project_release['pid'];
   }
 }
