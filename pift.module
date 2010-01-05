@@ -320,10 +320,7 @@ function pift_comment_load_node($comment) {
  * @return string HTML output.
  */
 function theme_pift_auto_followup($type, $nid, $cid, $filename) {
-  global $user;
-
   $args = array(
-    '!user' => theme('username', $user),
     '@id' => "pift-results-$nid",
     '@filename' => $filename,
   );
@@ -331,11 +328,12 @@ function theme_pift_auto_followup($type, $nid, $cid, $filename) {
   if ($cid) {
     $comment = _comment_load($cid);
     $args['@id'] .= "-$cid";
-    $args['@comment'] = $comment->title;
+    $args['@cid'] = $comment->cid;
+    $args['@comment'] = $comment->subject;
   }
 
   if ($type == 'retest') {
-    return t('Re-test of @filename from comment <a href="#@id">@comment</a> was requested by !user.', $args);
+    return t('<a href="#comment-@cid">@comment</a>: <a href="#@id">@filename</a> queued for re-testing.', $args);
   }
   elseif ($type == 'fail') {
     return t('The last submitted patch, <a href="#@id">@filename</a>, failed testing.', $args);

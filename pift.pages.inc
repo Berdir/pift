@@ -112,11 +112,14 @@ function pift_pages_retest_confirm_form(&$form_state, $test_id) {
  * Re-queue test if it still meets are criteria.
  */
 function pift_pages_retest_confirm_form_submit($form, &$form_state) {
+  global $user;
+
   $test = $form_state['values']['test'];
 
   if ($test['status'] > PIFT_STATUS_SENT) {
     project_issue_add_auto_followup(array(
       'nid' => $test['nid'],
+      'uid' => $user->uid,
       'sid' => PIFT_FOLLOWUP_RETEST,
       'comment' => theme('pift_auto_followup', 'retest', $test['nid'], $test['cid'], $test['title']),
     ));
