@@ -117,13 +117,24 @@ function pift_pages_retest_confirm_form_submit($form, &$form_state) {
   $test = $form_state['values']['test'];
 
   if ($test['status'] > PIFT_STATUS_SENT) {
-    project_issue_add_auto_followup(array(
+    // Base changes to be made in followup comment.
+    $changes = array(
       'nid' => $test['nid'],
       'uid' => $user->uid,
-      'sid' => PIFT_FOLLOWUP_RETEST,
       'comment' => theme('pift_auto_followup', 'retest', $test['nid'], $test['cid'], $test['title']),
-    ));
+    );
 
+    // If node issue status is not already a valid status then set to default
+    // retest status, otherwise leave status alone.
+    $node = node_load($test['nid']);
+    if (!in_array($node->project_issue['sid'], variable_get('pift_status', array()))) {
+      $changes['sid'] = PIFT_FOLLOWUP_RETEST;
+    }
+
+    // Add followup to issue.
+    project_issue_add_auto_followup($changes);
+
+    // Update test record to reflect change.
     db_query('UPDATE {pift_test}
               SET status = %d
               WHERE test_id = %d', PIFT_STATUS_QUEUE, $test['test_id']);

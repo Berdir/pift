@@ -4,6 +4,7 @@ PIFT 6.x-2.1, xxxx-xx-xx (development version)
 ------------------------
 - Changes:
    * #672850: Re-test request comments should come from user who issued them.
+   * #639230: Only change issue status on followup if necessary.
 
 PIFT 6.x-2.0, 2009-12-30
 ------------------------
