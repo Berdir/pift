@@ -325,15 +325,15 @@ function theme_pift_auto_followup($type, $nid, $cid, $filename) {
     '@filename' => $filename,
   );
 
-  if ($cid) {
-    $comment = _comment_load($cid);
-    $args['@id'] .= "-$cid";
-    $args['@cid'] = $comment->cid;
-    $args['@comment'] = $comment->subject;
-  }
-
   if ($type == 'retest') {
-    return t('<a href="#comment-@cid">@comment</a>: <a href="#@id">@filename</a> queued for re-testing.', $args);
+    if ($cid) {
+      $comment = _comment_load($cid);
+      $args['@id'] .= "-$cid";
+      $args['@cid'] = $comment->cid;
+      $args['@comment'] = $comment->subject;
+      return t('<a href="#comment-@cid">@comment</a>: <a href="#@id">@filename</a> queued for re-testing.', $args);
+    }
+    return t('<a href="#@id">@filename</a> queued for re-testing.', $args);
   }
   elseif ($type == 'fail') {
     return t('The last submitted patch, <a href="#@id">@filename</a>, failed testing.', $args);
