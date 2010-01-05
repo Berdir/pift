@@ -115,7 +115,8 @@ function pift_cron_queue_batch() {
       watchdog('pift', 'Failed to send test queue requests to server.', array(), WATCHDOG_ERROR);
     }
     elseif (isset($response['response'])) {
-      watchdog('pift', 'Test queue request did not succeed: @code.', array('@code' => $response['response']), WATCHDOG_ERROR);
+      watchdog('pift', 'Test queue request did not succeed: @message.',
+        array('@message' => pift_cron_response_code($response['response'])), WATCHDOG_ERROR);
     }
     elseif (isset($response['branches']) && isset($response['files'])) {
       // Store branch test IDs using the client_identifier (branch NID).
@@ -367,8 +368,8 @@ function pift_cron_retreive_results() {
     }
     elseif (isset($response['response'])) {
       if ($response['response'] != PIFR_RESPONSE_ACCEPTED) {
-        watchdog('pift', 'Retrieval of test results did not succeed: @code.',
-               array('@code' => $response['response']), WATCHDOG_ERROR);
+        watchdog('pift', 'Retrieval of test results did not succeed: @message.',
+               array('@message' => pift_cron_response_code($response['response'])), WATCHDOG_ERROR);
       }
       else {
         watchdog('pift', 'No test results to retrieve.');
@@ -474,4 +475,23 @@ function pift_cron_auto_followup($nid, $cid, $filename) {
     'sid' => PIFT_FOLLOWUP_FAIL,
     'comment' => theme('pift_auto_followup', 'fail', $nid, $cid, $filename),
   ));
+}
+
+/**
+ * Get the response from the code.
+ *
+ * @param integer $response_code Response code.
+ * @return string Representation of reponse code.
+ */
+function pift_cron_response_code($response_code) {
+  switch ($response_code) {
+    case PIFR_RESPONSE_ACCEPTED:
+      return t('Accepted');
+    case PIFR_RESPONSE_INVALID_SERVER:
+      return t('Invalid server (client key may have been disabled)');
+    case PIFR_RESPONSE_DENIED:
+      return t('Denied - ensure that test master is enabled and/or has reporting on');
+    default:
+      return 'Unknown';
+  }
 }
