@@ -7,6 +7,7 @@ PIFT 6.x-2.1, xxxx-xx-xx (development version)
    * #639230: Only change issue status on followup if necessary.
    * Correct re-test message when patch was posted on node.
    * #674964: Convert response codes to human readable text in watchdog messages.
+   * Clarify administration menu item.
 
 PIFT 6.x-2.0, 2009-12-30
 ------------------------

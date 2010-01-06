@@ -82,8 +82,8 @@ function pift_menu() {
   $items = array();
 
   $items['admin/project/pift'] = array(
-    'title' => 'PIFT settings',
-    'description' => 'Configure PIFT.',
+    'title' => 'Automated testing',
+    'description' => 'Configure the automated testing project issue integration.',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('pift_admin_settings_form'),
     'access arguments' => array('administer projects'),
