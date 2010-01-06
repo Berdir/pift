@@ -11,6 +11,7 @@ PIFT 6.x-2.1, xxxx-xx-xx (development version)
 - Bugs:
    * Correct re-test message when patch was posted on node.
    * #635334: Patches are not being re-tested automatically.
+   * #636728: Filter branches by core compatibility during commit trigger.
 
 PIFT 6.x-2.0, 2009-12-30
 ------------------------

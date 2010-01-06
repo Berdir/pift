@@ -78,6 +78,7 @@ function pift_cron_test_release($min, $max) {
       continue;
     }
 
+    // If commit group for project has not been started then initialize one.
     if (!isset($commits[$branch['pid']])) {
       $commits[$branch['pid']] = array();
     }
@@ -87,18 +88,31 @@ function pift_cron_test_release($min, $max) {
     $commits[$branch['pid']][$identifier] = $identifier;
   }
 
+  $api_versions = pift_core_api_versions();
   foreach ($commits as $pid => $branches) {
     $rids = pift_cron_get_release($pid, $branches);
     foreach ($rids as $rid) {
-      $test_id = db_result(db_query('SELECT test_id
-                                     FROM {pift_test}
-                                     WHERE type = %d
-                                     AND id = %d', PIFT_TYPE_RELEASE, $rid));
-      if ($test_id) {
-        pift_test_requeue($test_id);
-      }
-      else if ($test_id !== 0) {
-        pift_test_add(PIFT_TYPE_RELEASE, $rid);
+      // Ensure that one of the compatibility terms is present on the release
+      // node.
+      $release = node_load($rid);
+      $found = FALSE;
+      foreach ($api_versions as $api_version) {
+        if (array_key_exists($api_version, $release->taxonomy)) {
+          // Compatible term found, continue processing.
+          $test_id = db_result(db_query('SELECT test_id
+                                         FROM {pift_test}
+                                         WHERE type = %d
+                                         AND id = %d', PIFT_TYPE_RELEASE, $rid));
+
+          // If existing test for release, queue it, otherwise add a new test.
+          if ($test_id) {
+            pift_test_requeue($test_id);
+          }
+          else if ($test_id !== 0) {
+            pift_test_add(PIFT_TYPE_RELEASE, $rid);
+          }
+          break;
+        }
       }
     }
   }
