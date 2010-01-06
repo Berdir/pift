@@ -105,13 +105,15 @@ function pift_admin_settings_form() {
     '#type' => 'checkboxes',
     '#title' => t('Core branches'),
     '#description' => t('Drupal core branches that are to be tested. Issues pertaining to them will have files tested.'),
-    '#options' => array(
-      6 => t('6.x'),
-      7 => t('7.x'),
-      8 => t('8.x'),
-    ),
+    '#options' => project_release_compatibility_list(),
     '#default_value' => variable_get('pift_core', array()),
   );
+  // Release must be compatible with Drupal 6 or later in order to be tested.
+  foreach ($form['criteria']['pift_core']['#options'] as $key => $option) {
+    if ($option[0] < 6) {
+      unset($form['criteria']['pift_core']['#options'][$key]);
+    }
+  }
 
   $form['advanced'] = array(
     '#type' => 'fieldset',

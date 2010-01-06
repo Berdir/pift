@@ -260,3 +260,12 @@ function pift_update_6202() {
 
   return $ret;
 }
+
+/**
+ * Convert the core API versions variable to term IDs and enable 6.x and 7.x.
+ */
+function pift_update_6203() {
+  variable_set('pift_core', array(87 => 87, 103 => 103));
+
+  return array();
+}

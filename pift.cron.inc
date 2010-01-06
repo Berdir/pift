@@ -17,7 +17,7 @@ function pift_cron_retest() {
     return;
   }
 
-  $api_versions = array_filter(variable_get('pift_core', array()));
+  $api_versions = pift_core_api_versions();
   $sids = variable_get('pift_status', array());
 
   // Only attempt query if both values are not empty.
@@ -247,13 +247,15 @@ function pift_cron_queue_batch_build_branches(array &$branches) {
  * @param array $projects List of required projects (pids).
  */
 function pift_cron_queue_batch_build_branches_process(array &$batch, array &$branches, array &$projects) {
-  // Relase API version vocabulary.
-  $api_vid = _project_release_get_api_vid();
+  $api_versions = pift_core_api_versions();
 
   // Include branch data for all dependency branches and those that require review.
   foreach ($branches as $rid => $test) {
     // Load branch release node.
-    $branch = node_load($rid);
+    if (!($branch = node_load($rid))) {
+      watchdog('pift', 'Invalid release ID [' . $rid . '] for test ID [' . $test['test_id'] . '].', WATCHDOG_ERROR);
+      continue;
+    }
 
     // Generate branch information.
     $item = array(
@@ -267,22 +269,29 @@ function pift_cron_queue_batch_build_branches_process(array &$batch, array &$bra
     );
 
     // Attempt to determine the Drupal core API version.
-    list($api_version, $api_tid) = pift_core_api($branch);
+    $api = array();
+    foreach ($branch->taxonomy as $tid => $term) {
+      if (in_array($tid, $api_versions)) {
+        $api['version'] = array_shift(explode('.', $term->name, 2));
+        $api['tid'] = $term->tid;
+        break;
+      }
+    }
 
     // If the API version not found then ignore this branch.
-    if (empty($api_version)) {
-      watchdog('pift', 'Project release node [@nid] must have a Drupal core API taxonomy term.', array('@nid' => $branch->nid));
+    if (empty($api)) {
+      watchdog('pift', 'Project release node [@nid] does not have a Drupal core API taxonomy term.', array('@nid' => $branch->nid), WATCHDOG_ERROR);
       continue;
     }
 
     // If the project is Drupal core then add the plugin argument, otherwise
     // determine the compatible core branch and add it as a dependency.
     if (PIFT_PID == $item['project_identifier']) {
-      $item['plugin_argument']['core'] = $api_version;
+      $item['plugin_argument']['core'] = $api['version'];
     }
     else {
       // Load the Drupal core API release (branch) compatible with this branch.
-      $api_release = node_load(pift_core_api_release($api_tid));
+      $api_release = node_load(pift_core_api_release($api['tid']));
       $item['dependency'] = $api_release->nid;
       $item['plugin_argument']['modules'] = array(); // TODO Include the list of modules.
 

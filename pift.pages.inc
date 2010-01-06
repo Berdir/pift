@@ -45,12 +45,19 @@ function pift_pages_project_issue_settings(&$form, $form_state) {
     '#weight' => -9,
     '#access' => user_access('pift enable project testing'),
   );
-  $versions = array_filter(variable_get('pift_core', array()));
+
+  // Build an array of core capatible version strings (ie 6.x, 7.x, etc).
+  $api_versions = pift_core_api_versions();
+  $versions = array();
+  foreach ($api_versions as $api_version) {
+    $term = taxonomy_get_term($api_version);
+    $versions[] = $term->name;
+  }
   $form['testing']['pift_enable'] = array(
     '#type' => 'checkbox',
     '#title' => t('Enable automated testing'),
     '#description' => t('Enable automated testing of @versions compatible branches and patches.',
-      array('@versions' => implode('.x, ', $versions) . '.x')),
+      array('@versions' => implode(', ', $versions))),
     '#default_value' => pift_project_enabled($form['nid']['#value']),
   );
   $form['#submit'][] = 'pift_pages_project_issue_settings_submit';

@@ -342,27 +342,12 @@ function theme_pift_auto_followup($type, $nid, $cid, $filename) {
 }
 
 /**
- * Attempt to determine the Drupal core API version.
+ * Get the core compatible API version term IDs.
  *
- * @param object $node Node object.
- * @return array Core API version information in the format
- *   array($api_version, $api_tid).
+ * @return array Associative array of core compatible API version term IDs.
  */
-function pift_core_api($node) {
-  if (!empty($node->taxonomy)) {
-    // Relase API version vocabulary.
-    $api_vid = _project_release_get_api_vid();
-
-    foreach ($node->taxonomy as $tid => $term) {
-      if ($term->vid == $api_vid) {
-        $api_version = array_shift(explode('.', $term->name, 2));
-        $api_tid = $term->tid;
-
-        return array($api_version, $api_tid);
-      }
-    }
-  }
-  return array(NULL, NULL);
+function pift_core_api_versions() {
+  return array_filter(variable_get('pift_core', array()));
 }
 
 /**
