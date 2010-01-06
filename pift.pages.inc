@@ -178,7 +178,14 @@ function theme_pift_attachments(array $files, $closed) {
 
     if ($file['test_id'] !== NULL) {
       list($row[], $class) = pift_attachment_process($file['status'], (bool) $file['message']);
-      $row[] = $file['message'] ? check_plain($file['message']) : '<em>' . t('None') . '</em>';
+      $message = $file['message'] ? check_plain($file['message']) : '<em>' . t('None') . '</em>';
+
+      // If file is being re-tested then prefix the previous result message.
+      if ($file['message'] && $file['status'] == PIFT_STATUS_QUEUE) {
+        $message = t('Previous result: ') . $message;
+      }
+
+      $row[] = $message;
     }
     else {
       $row[] = '<em>' . t('Ignored') . '</em>';
