@@ -157,7 +157,7 @@ function pift_cron() {
     module_load_include('cron.inc', 'pift');
 
     // Requeue all tests that have passed the re-test interval.
-    pift_cron_retest();
+//    pift_cron_retest(); TODO fix query.
 
     // Queue all tests related to any commits that have occured.
     $cid = db_result(db_query('SELECT MAX(cid) FROM {cvs_messages}'));
