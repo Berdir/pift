@@ -10,6 +10,7 @@ files[] = pift.pages.inc
 files[] = pift.project.inc
 files[] = pift.test.inc
 dependencies[] = project
+dependencies[] = project_info
 dependencies[] = project_issue
 dependencies[] = project_release
 dependencies[] = cvs

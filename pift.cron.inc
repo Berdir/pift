@@ -259,11 +259,14 @@ function pift_cron_queue_batch_build_branches(array &$branches) {
  * @param array $batch Batch information.
  * @param array $branches Branches that must be loaded.
  * @param array $projects List of required projects (pids).
+ * @param integer $depth (Internal) Number of times the function has been
+ *   recursively executed.
  */
-function pift_cron_queue_batch_build_branches_process(array &$batch, array &$branches, array &$projects) {
+function pift_cron_queue_batch_build_branches_process(array &$batch, array &$branches, array &$projects, $depth = 0) {
   $api_versions = pift_core_api_versions();
 
   // Include branch data for all dependency branches and those that require review.
+  $branches_implied = array();
   foreach ($branches as $rid => $test) {
     // Load branch release node.
     if (!($branch = node_load($rid))) {
@@ -306,14 +309,30 @@ function pift_cron_queue_batch_build_branches_process(array &$batch, array &$bra
     else {
       // Load the Drupal core API release (branch) compatible with this branch.
       $api_release = node_load(pift_core_api_release($api['tid']));
-      $item['dependency'] = $api_release->nid;
-      $item['plugin_argument']['modules'] = array(); // TODO Include the list of modules.
+      $item['dependency'] = array($api_release->nid => $api_release->nid);
 
-      // If the core branch has not already been added then add it.
-      if (!isset($branches[$api_release])) {
-        $branches[$api_release->nid] = FALSE;
-        $projects[PIFT_PID] = PIFT_PID;
+      // Cycle through dependencies and add the related branches to the implied
+      // branch list if they are not already being processed.
+      $dependencies = project_info_dependency_list_get($branch->nid);
+      foreach ($dependencies as $dependency) {
+        $item['dependency'][$dependency['rid']] = $dependency['rid'];
       }
+
+      // Check for branches as dependencies that are not in the list of
+      // processed branches.
+      foreach ($item['dependency'] as $rid) {
+        // Add branch to implied list for post-processing.
+        if (!isset($branches[$rid])) {
+          $branches_implied[$rid] = FALSE;
+        }
+      }
+
+      // Ensure that not depending on self.
+      unset($item['dependency'][$branch->nid]);
+
+      // Flatten array of dependencies and fill in modules list.
+      $item['dependency'] = implode(',', $item['dependency']);
+      $item['plugin_argument']['modules'] = array_keys(project_info_module_list_get($branch->nid));
     }
 
     // Add item information to the batch.
@@ -321,6 +340,11 @@ function pift_cron_queue_batch_build_branches_process(array &$batch, array &$bra
 
     // Add branch's project to list to be loaded.
     $projects[$branch->project_release['pid']] = $branch->project_release['pid'];
+  }
+
+  // Post-process any implied branches.
+  if ($branches_implied && $depth == 0) {
+    pift_cron_queue_batch_build_branches_process($batch, $branches_implied, $projects, $depth + 1);
   }
 }
 

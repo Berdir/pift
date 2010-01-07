@@ -8,6 +8,7 @@ PIFT 6.x-2.1, xxxx-xx-xx (development version)
    * #674964: Convert response codes to human readable text in watchdog messages.
    * Clarify administration menu item.
    * #675258: Clarify what the result represents after retesting.
+   * #612296: Integrate with list of modules once it exists.
 - Bugs:
    * Correct re-test message when patch was posted on node.
    * #635334: Patches are not being re-tested automatically.
