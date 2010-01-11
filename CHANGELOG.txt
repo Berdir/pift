@@ -10,6 +10,7 @@ PIFT 6.x-2.1, 2010-01-06
    * #675258: Clarify what the result represents after retesting.
    * #612296: Integrate with list of modules once it exists.
    * Temporarily comment out re-test query.
+   * Convert file header blocks to use @author and standard spacing.
 - Bugs:
    * Correct re-test message when patch was posted on node.
    * #635334: Patches are not being re-tested automatically.
