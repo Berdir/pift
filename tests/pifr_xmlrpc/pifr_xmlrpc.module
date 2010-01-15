@@ -1,0 +1,81 @@
+<?php
+// $Id$
+
+/**
+ * @file
+ * Provides a dummy implementation of PIFR XML-RPC API for testing.
+ *
+ * @author Jimmy Berry ("boombatower", http://drupal.org/user/214218)
+ */
+
+/**
+ * Prevent project from attempting to send mail during testing.
+ */
+define('PROJECT_NOMAIL', 17);
+
+/**
+ * Implementation of hook_xmlrpc().
+ */
+function pifr_xmlrpc_xmlrpc() {
+  return array(
+    array('pifr.queue', 'pifr_xmlrpc_queue', array('int', 'string', 'struct'),
+           t('Queue a batch of files for testing. (Called by PIFT)')),
+    array('pifr.retrieve', 'pifr_xmlrpc_retrieve', array('struct', 'string', 'int'),
+           t('Retrieve test results. (Called by PIFT)')),
+  );
+}
+
+function pifr_xmlrpc_queue($client_key, $batch) {
+  $response = array(
+    'branches' => array(),
+    'files' => array(),
+  );
+  $i = 1;
+  foreach (array('branches', 'files') as $type) {
+    foreach ($batch[$type] as $item) {
+      $response[$type][$item['client_identifier']] = $i++;
+    }
+  }
+
+  pifr_xmlrpc_call('pifr.queue', func_get_args(), $response);
+  return $response;
+}
+
+function pifr_xmlrpc_retrieve() {
+  if (!($response = variable_get('pifr_xmlrpc_response', FALSE))) {
+    $response = array(
+      'response' => PIFR_RESPONSE_ACCEPTED,
+    );
+  }
+
+  pifr_xmlrpc_call('pifr.retrieve', func_get_args(), $response);
+  return $response;
+}
+
+/**
+ * Store XML-RPC calls to PIFR methods.
+ *
+ * @param string $method XML-RPC method, or NULL to simply return calls.
+ * @param array $arguments List of arguments.
+ * @return array List of calls with keys: method and arguments.
+ */
+function pifr_xmlrpc_call($method = NULL, array $arguments = array(), $response = NULL) {
+  $calls = variable_get('pifr_xmlrpc_calls', array());
+
+  if ($method) {
+    $calls[] = array(
+      'method' => $method,
+      'arguments' => $arguments,
+      'response' => $response,
+    );
+    variable_set('pifr_xmlrpc_calls', $calls);
+  }
+  return $calls;
+}
+
+/**
+ * Clear all recorded XML-RPC calls.
+ */
+function pifr_xmlrpc_clear() {
+  variable_del('pifr_xmlrpc_calls');
+}

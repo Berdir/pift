@@ -1,0 +1,9 @@
+; $Id$
+name = PIFR XML-RPC
+description = Provides a dummy implementation of PIFR XML-RPC API for testing.
+package = Project
+core = 6.x
+php = 5
+hidden = TRUE
+files[] = pifr_xmlrpc.module
+dependencies[] = pift

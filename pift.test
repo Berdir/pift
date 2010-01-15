@@ -8,49 +8,153 @@
  * @author Jimmy Berry ("boombatower", http://drupal.org/user/214218)
  */
 
+/**
+ * Base PIFT test class, providing a drupal.org style environment.
+ */
 class PIFTTestCase extends DrupalWebTestCase {
 
-  protected $adminUser;
-
-  protected $drupalProject;
-
-  protected $testProject;
-
-  protected $testRelease;
+  /**
+   * Admin level user that can access all necessary pages.
+   *
+   * @var object
+   */
+  protected $admin;
 
   /**
-   * Implementation of getInfo().
+   * List of project nodes created for testing.
+   *
+   * @var array
    */
-  public static function getInfo() {
-    return array(
-      'name' => t('PIFT'),
-      'description' => t('Confirm that the various workflow elements that PIFT modified work as intended.'),
-      'group' => t('PIFT'),
+  protected $projects = array();
+
+  /**
+   * List of release nodes created for testing.
+   *
+   * @var array
+   */
+  protected $releases = array();
+
+  /**
+   * Associative array of PIFT settings used for testing.
+   *
+   * @var array
+   */
+  protected $settings = array();
+
+  /**
+   * Setup drupal.org style environment.
+   */
+  protected function setUp() {
+    // Enable all dependencies of pift.
+    parent::setUp(
+      'taxonomy',
+      'project',
+      'project_info',
+      'project_issue',
+      'project_release',
+      'cvs',
+      'views',
+      'comment_upload',
+      'upload',
+      'upload',
+      'pift',
+      'pifr_xmlrpc'
     );
-  }
 
-  /**
-   * Implementation of setUp().
-   */
-  public function setUp() {
-    parent::setUp('upload', 'comment_upload', 'project', 'project_release', 'project_issue', 'cvs', 'pift');
+    // Create administrator user which can access all necessary pages.
+    $this->admin = $this->drupalCreateUser(array(
+      'access projects',
+      'administer projects',
+      'maintain projects',
+      'access project issues',
+      'create project issues',
+      'administer CVS',
+      'pift enable project testing',
+      'pift re-test files',
+      'administer content types',
+      'upload files',
+      'upload files to comments',
+      'view uploaded files',
+      'view files uploaded to comments',
+      'administer site configuration',
+      'administer taxonomy',
+    ));
 
-    $this->adminUser = $this->drupalCreateUser(array('administer projects', 'maintain projects', 'access project issues',
-                                                      'create project issues', 'administer CVS', 'pift re-test files',
-                                                      'administer content types', 'upload files', 'upload files to comments',
-                                                      'view files uploaded to comments'));
-    $this->drupalLogin($this->adminUser);
+    // Temporarily set vocabulary to remove notices during login.
+    _project_get_vid();
+    variable_set('project_release_api_vocabulary', 1);
+
+    // Login and setup environment.
+    $this->drupalLogin($this->admin);
+
+    $this->setUpTaxonomy();
     $this->setUpProject();
     $this->setUpSettings();
   }
 
   /**
-   * Setup project related information for test.
+   * Create project and release taxonomy.
+   */
+  protected function setUpTaxonomy() {
+    // Project types
+    _project_get_vid();
+    $this->setUpTaxonomyTerms(1, array('Drupal project', 'Modules'));
+
+    // Release type.
+    $edit = array(
+      'name' => 'Release type',
+      'nodes[project_release]' => TRUE,
+    );
+    $this->drupalPost('admin/content/taxonomy/add/vocabulary', $edit, t('Save'));
+
+    $this->setUpTaxonomyTerms(2, array('Bug fixes', 'New features', 'Security release'));
+
+    // Core compatibility.
+    $edit = array(
+      'name' => 'Core compatibility',
+      'nodes[project_release]' => TRUE,
+      'required' => TRUE,
+    );
+    $this->drupalPost('admin/content/taxonomy/add/vocabulary', $edit, t('Save'));
+
+    db_query("UPDATE {vocabulary} SET module = '%s' WHERE vid = %d", 'project_release', 3);
+
+    // Set the variable to ensure that _project_release_get_api_vid() works.
+    variable_set('project_release_api_vocabulary', 3);
+
+    $this->setUpTaxonomyTerms(3, array('5.x', '6.x', '7.x', '8.x'));
+  }
+
+  /**
+   * Create taxonomy terms for given vocabulary ID.
+   *
+   * @param integer $vid Vocabulary ID.
+   * @param array $terms List of terms to add to vocabulary.
+   */
+  protected function setUpTaxonomyTerms($vid, array $terms) {
+    // Visit taxonomy page ahead of time to remove all get requests from loop.
+    $this->drupalGet('admin/content/taxonomy/' . $vid . '/add/term');
+
+    foreach ($terms as $term) {
+      $edit = array(
+        'name' => $term,
+      );
+      $this->drupalPost(NULL, $edit, t('Save'));
+    }
+  }
+
+  /**
+   * Setup project related information and create dumy projects/releases.
+   *
+   * Projects:
+   *   - Drupal: 7.x-dev
+   *   - Foo: 7.x-1.x-dev
+   *   - Bar: 7.x-1.x-dev
    */
   protected function setUpProject() {
     // Setup core CVS repository.
     $edit = array(
-      'name' => 'drupal-core',
+      'name' => 'Drupal',
       'method' => 1, // Use external script to insert data, thus never retrieve.
       'root' => ':pserver:anonymous:anonymous@cvs.drupal.org:/cvs/drupal',
       'modules' => 'drupal',
@@ -60,7 +164,7 @@ class PIFTTestCase extends DrupalWebTestCase {
 
     // Setup contrib CVS repository.
     $edit = array(
-      'name' => 'drupal-contrib',
+      'name' => 'Contributions',
       'method' => 1, // Use external script to insert data, thus never retrieve.
       'root' => ':pserver:anonymous:anonymous@cvs.drupal.org:/cvs/drupal-contrib',
       'modules' => 'contributions',
@@ -70,16 +174,27 @@ class PIFTTestCase extends DrupalWebTestCase {
 
     // Setup CVS account.
     $edit = array(
-      'data' => $this->adminUser->name . ':anonymous:anonymous',
+      'data' => $this->admin->name . ':anonymous:anonymous',
     );
     $this->drupalPost('admin/project/cvs-accounts/import', $edit, t('Import accounts'));
-    $this->assertText(t('added @user', array('@user' => $this->adminUser->name)));
+    $this->assertText(t('added @user', array('@user' => $this->admin->name)));
 
-    // Set project settings.
+    // Set project settings, required for auto-followups to function.
     $edit = array(
-      'project_issue_followup_user' => $this->adminUser->name,
+      'project_issue_followup_user' => $this->admin->name,
     );
     $this->drupalPost('admin/project/project-issue-settings', $edit, t('Save configuration'));
+    $this->assertText(t('The configuration options have been saved.'));
+
+    // Set project release to work with 6.x and 7.x compatibility terms and use
+    // the drupal.org style version format.
+    $edit = array(
+      'project_release_default_version_format' => '!api#major%patch#extra',
+      'project_release_active_compatibility_tids[7]' => TRUE, // 6.x.
+      'project_release_active_compatibility_tids[8]' => TRUE, // 7.x.
+    );
+    $this->drupalPost('admin/project/project-release-settings', $edit, t('Save configuration'));
+    $this->assertText(t('The configuration options have been saved.'));
 
     // Enable attachments on project issues.
     $edit = array(
@@ -90,174 +205,376 @@ class PIFTTestCase extends DrupalWebTestCase {
     $this->drupalPost('admin/content/node-type/project-issue', $edit, t('Save content type'));
     $this->assertRaw(t('The content type %type has been added.', array('%type' => 'Issue')));
 
-    // Setup core project.
+    // Allow uploading of .patch and .diff files.
     $edit = array(
-      'title' => 'Drupal',
-      'project[uri]' => 'drupal',
-      'cvs[repository]' => 1, // Core CVS repository.
-      'cvs[directory]' => '/',
+      'upload_extensions_default' => 'txt patch diff',
     );
-    $this->drupalPost('node/add/project-project', $edit, t('Save'));
-    $this->drupalProject = node_load(array('title' => $edit['title']));
+    $this->drupalPost('admin/settings/uploads', $edit, t('Save configuration'));
+    $this->assertText(t('The configuration options have been saved.'));
 
-    // Setup contrib project.
-    $edit = array(
-      'title' => 'Test',
-      'project[uri]' => 'test',
-      'cvs[repository]' => 2, // Contrib CVS repository.
-      'cvs[directory]' => '/modules/simpletest',
-      'body' => $this->randomName(32),
-    );
-    $this->drupalPost('node/add/project-project', $edit, t('Save'));
-    $this->testProject = node_load(array('title' => $edit['title']));
+    // Setup Drupal core and contrib projects.
+    module_load_include('package.inc', 'project_info');
+    foreach (array('drupal', 'foo', 'bar') as $project) {
+      // Drupal core must be treated differently.
+      $core = $project == 'drupal';
 
-    // Create release for contrib project.
-    $this->drupalPost('node/add/project-release/' . $this->testProject->nid, array(), t('Next'));
+      // Create project and load project node for later use.
+      $edit = array(
+        'project_type' => $core ? 1 : 2,
+        'title' => ucfirst($project),
+        'project[uri]' => $project,
+        'body' => $this->randomString(64),
+        'cvs[repository]' => $core ? 1 : 2,
+        'cvs[directory]' => $core ? '/' : '/modules/' . $project . '/',
+      );
+      $this->drupalPost('node/add/project-project', $edit, t('Save'));
+      $this->projects[$project] = node_load(array('title' => $edit['title']));
 
-    $edit = array(
-      'project_release[version_major]' => '1',
-      'project_release[version_minor]' => '0',
-    );
-    $this->drupalPost(NULL, $edit, t('Next'));
+      // Drupal core requires a special version format string.
+      if ($core) {
+        $edit = array(
+          'version_format' => '!major%minor%patch#extra',
+        );
+        $this->drupalPost('node/' . $this->projects[$project]->nid . '/edit/releases', $edit, t('Save'));
+      }
 
-    $edit = array(
-      'body' => $this->randomName(32),
-    );
-    $this->drupalPost(NULL, $edit, t('Save'));
-    $this->testRelease = node_load(array('title' => $this->testProject->title . ' 1.0'));
+      // Enable testing of proeject.
+      $edit = array(
+        'pift_enable' => TRUE,
+      );
+      $this->drupalPost('node/' . $this->projects[$project]->nid . '/edit/issues', $edit, t('Save'));
+      $this->assertText(t('Issue settings have been saved.'));
+
+      // Create 7.x release for project.
+      $this->drupalPost('node/add/project-release/' . $this->projects[$project]->nid, array(), t('Next'));
+
+      $edit = array(
+        'taxonomy[3]' => 8, // 7.x.
+        'project_release[version_major]' => $core ? '7' : '1',
+        'project_release[version_patch]' => 'x',
+        'project_release[version_extra]' => 'dev',
+      );
+      $this->drupalPost(NULL, $edit, t('Next'));
+
+      $edit = array(
+        'body' => $this->randomString(32),
+      );
+      $this->drupalPost(NULL, $edit, t('Save'));
+      $this->releases[$project] = node_load(array('title' => $this->projects[$project]->title . ' 7.x' . ($core ? '' : '-1.x') . '-dev'));
+
+      // Add project_info information, firstly module list.
+      $info = array(
+        $project => array(
+          'name' => $project,
+          'description' => $this->randomString(),
+        ),
+        $project . $project => array(
+          'name' => $project . $project,
+          'description' => $this->randomString(),
+        ),
+      );
+      project_info_package_list_store($this->releases[$project]->nid, $info);
+
+      if (!$core) {
+        if ($project == 'foo') {
+          // Add dependency: foo on bar.
+          $info = array(
+            'module_id' => 3,
+            'dependency_id' => 5,
+          );
+        }
+        else {
+          // Add dependency: barbar on foofoo.
+          $info = array(
+            'module_id' => 6,
+            'dependency_id' => 4,
+          );
+        }
+        drupal_write_record('project_info_dependency', $info);
+      }
+    }
   }
 
   /**
-   * Setup PIFT settings for test.
+   * Initialize PIFT settings for test.
    */
   protected function setUpSettings() {
-    $edit = array(
+    $this->settings = array(
+      'pift_frequency' => '0', // Cron run.
       'pift_key' => md5($this->randomName()),
       'pift_server' => url('', array('absolute' => TRUE)),
-      'pift_followup_fail' => 13, // Patch (code needs work).
-      'pift_followup_retest' => 8, // Patch (code needs review).
-      'pift_regex' => '/\.txt$/', // Want to use .txt files since they are available as test files.
-      'pift_status[]' => array(8, 14), // Patch (code needs review), patch (ready to commit).
-      'pift_core[7]' => TRUE, // Test 7.x related branches.
-      'pift_pid' => $this->drupalProject->title,
+      'pift_description' => $this->randomName(64),
+      'pift_followup_fail' => 13, // Status: "code needs work".
+      'pift_followup_retest' => 8, // Status "code needs review".
+      'pift_regex' => '/(?<![.\-_][Dd][56])(\.diff|\.patch)$/',
+      'pift_status[]' => array(8, 14), // Statues: "code needs review" and "reviewed & testing by the community".
+      'pift_core[7]' => TRUE, // 6.x.
+      'pift_core[8]' => TRUE, // 7.x
+      'pift_pid' => $this->projects['drupal']->title,
     );
-    $this->drupalPost('admin/project/pift', $edit, t('Save configuration'));
+    $this->drupalPost('admin/project/pift', $this->settings, t('Save configuration'));
+    $this->assertText(t('The configuration options have been saved.'));
   }
 
   /**
-   * Test the PIFT interface to ensure that adding files are displayed
-   * correctly.
+   * Run Drupal cron and related activities.
+   *
+   * Clears the XML-RPC call collection, runs cron and check watchdog log for
+   * success message, ensures that no pift messages appear in watchdog log and
+   * sleeps for one second to ensure cron will run properly when called
+   * multiple times during a test.
    */
-  public function testInterface() {
-    // Upload a patch file and see that it is ignored.
-    $file = array_shift($this->drupalGetTestFiles('text', 1024));
+  protected function runCron() {
+    // Clear collected XML-RPC requests.
+    pifr_xmlrpc_clear();
+
+    $this->drupalGet(url('', array('absolute' => TRUE)) . 'cron.php');
+    $messages = $this->getLastLogMessages(1);
+    $this->assertEqual($messages[0]['message'], 'Cron run completed.');
+
+    // PIFT should not have placed anything in the log.
+    $this->assertNoLastLogMessages('pift', 10);
+
+    // Cron does not run consistently without a break.
+    sleep(1);
+  }
+
+  /**
+   * Add a commit to the cvs module tables.
+   *
+   * @param string $project Project name, found in $this->projects.
+   * @param string $branch CVS branch identifier.
+   */
+  protected function addCommit($project, $branch = 'HEAD') {
+    $commit = array(
+      'rid' => $this->releases[$project]->nid,
+      'created' => time(),
+      'cvs_user' => $this->admin->name,
+      'message' => $this->randomString(64),
+    );
+    drupal_write_record('cvs_messages', $commit);
+
+    $file = array(
+      'cid' => $commit['cid'],
+      'rid' => $this->releases[$project]->nid,
+      'uid' => $this->admin->uid,
+      'nid' => $this->projects[$project]->nid,
+      'file' => $this->randomName(),
+      'branch' => $branch,
+      'revision' => '1',
+      'lines_added' => 17,
+      'lines_removed' => 17,
+    );
+    drupal_write_record('cvs_files', $file);
+  }
+
+  /**
+   * Create an issue node.
+   *
+   * @param string $project Project name, found in $this->projects.
+   * @param string $file (Optional) Location of file to attach to issue.
+   * @return object Issue node object.
+   */
+  protected function createIssue($project, $file = NULL) {
     $edit = array(
-      'rid' => $this->testRelease->nid,
+      'rid' => $this->releases[$project]->nid,
       'component' => 'Code',
       'category' => 'task',
       'title' => $this->randomName(8),
-      'body' => $this->randomName(32),
-      'files[upload]' => realpath($file->filename),
+      'body' => $this->randomString(32),
     );
-    $this->drupalPost('node/add/project-issue/' . $this->testProject->project['uri'], $edit, t('Save'));
+
+    // If a file specified then attach it to the issue.
+    if ($file) {
+      $edit['files[upload]'] = realpath($file);
+    }
+
+    $this->drupalPost('node/add/project-issue/' . $this->projects[$project]->project['uri'], $edit, t('Save'));
     $this->assertRaw(t('@type %title has been created', array('@type' => 'Issue', '%title' => $edit['title'])));
-    $issue = node_load(array('title' => $edit['title']));
-
-    $this->checkAttachmentStandard($issue->nid, NULL);
-
-    // Upload file in proper status.
-    $comments = array();
-    $edit = array(
-      'sid' => 8,
-      'files[upload]' => realpath($file->filename),
-    );
-    $this->drupalPost('node/' . $issue->nid, $edit, t('Save'));
-    $comments[] = $this->loadLastComment($issue->nid);
-
-    $this->checkAttachmentStandard($issue->nid, NULL);
-    $this->checkAttachmentStandard($issue->nid, $comments[0]->cid);
-
-    // Enable testing of project.
-    $edit = array(
-      'pift_enable' => TRUE,
-    );
-    $this->drupalPost('node/' . $this->testProject->nid . '/edit/issues', $edit, t('Save'));
-
-    // Upload file when all criteria is matched.
-    $edit = array(
-      'files[upload]' => realpath($file->filename),
-    );
-    $this->drupalPost('node/' . $issue->nid, $edit, t('Save'));
-    $comments[] = $this->loadLastComment($issue->nid);
-
-    $this->checkAttachment($issue->nid, NULL, $file, 'Queued for testing');
-    $this->checkAttachment($issue->nid, $comments[0]->cid, $file, 'Queued for testing');
-    $this->checkAttachment($issue->nid, $comments[1]->cid, $file, 'Queued for testing');
-
-    // Change file regex.
-    $edit = array(
-      'pift_regex' => '/\.patch$/',
-    );
-    $this->drupalPost('admin/project/pift', $edit, t('Save configuration'));
-
-    // Upload non-patch file when all criteria is matched.
-    $edit = array(
-      'files[upload]' => realpath($file->filename),
-    );
-    $this->drupalPost('node/' . $issue->nid, $edit, t('Save'));
-    $comments[] = $this->loadLastComment($issue->nid);
-
-    $this->checkAttachment($issue->nid, NULL, $file, 'Queued for testing');
-    $this->checkAttachment($issue->nid, $comments[0]->cid, $file, 'Queued for testing');
-    $this->checkAttachment($issue->nid, $comments[1]->cid, $file, 'Queued for testing');
-    $this->checkAttachment($issue->nid, $comments[2]->cid, $file, 'Ignored');
-
-    // Change file regex back.
-    $edit = array(
-      'pift_regex' => '/\.txt$/',
-    );
-    $this->drupalPost('admin/project/pift', $edit, t('Save configuration'));
-
-    // Upload patch file when all criteria is matched.
-    $edit = array(
-      'files[upload]' => realpath($file->filename),
-    );
-    $this->drupalPost('node/' . $issue->nid, $edit, t('Save'));
-    $comments[] = $this->loadLastComment($issue->nid);
-
-    $this->checkAttachment($issue->nid, NULL, $file, 'Queued for testing');
-    $this->checkAttachment($issue->nid, $comments[0]->cid, $file, 'Queued for testing');
-    $this->checkAttachment($issue->nid, $comments[1]->cid, $file, 'Queued for testing');
-    $this->checkAttachment($issue->nid, $comments[2]->cid, $file, 'Queued for testing');
-    $this->checkAttachment($issue->nid, $comments[3]->cid, $file, 'Queued for testing');
+    return node_load(array('title' => $edit['title']));
   }
 
   /**
-   * Check that an attachment has the intended values.
+   * Get the last log messages.
+   *
+   * @param integer $count (Optional) Count of log message to retrieve.
+   * @return array List of log entry information.
    */
-  protected function checkAttachment($nid, $cid, $file, $status, $test_result = 'None', $operations = 'None') {
+  protected function getLastLogMessages($count = 10) {
+    $result = db_query('SELECT * FROM {watchdog} ORDER BY wid DESC LIMIT %d', $count);
+    $messages = array();
+    while ($message = db_fetch_array($result)) {
+      $messages[] = $message;
+    }
+    return $messages;
+  }
+
+  /**
+   * Assert that no log messages of a type exist in the last number entries.
+   *
+   * @param string $type Watchdog message type.
+   * @param integer $count Number of messages to search.
+   * @return boolean TRUE if the assertion passed, otherwise FALSE.
+   */
+  protected function assertNoLastLogMessages($type, $count = 10) {
+    $messages = $this->getLastLogMessages($count);
+    foreach ($messages as $message) {
+      if ($message['type'] == $type) {
+        return $this->fail('Found log message: ' . t($message['message'], unserialize($message['variables'])));
+      }
+    }
+    return TRUE;
+  }
+
+  /**
+   * Assert that test record matching criteria exists.
+   *
+   * @param integer $test_id Test ID.
+   * @param integer $type Test type, PIFT_TYPE_*.
+   * @param integer $id Related entitiy ID.
+   * @param integer $status Test status, PIFT_STATUS_*.
+   * @return boolean TRUE if assertion passed, otherwise FALSE.
+   */
+  protected function assertTest($test_id, $type, $id, $status) {
+    $result = db_query('SELECT test_id
+                        FROM {pift_test}
+                        WHERE test_id = %d
+                        AND type = %d
+                        AND id = %d
+                        AND status = %d', $test_id, $type, $id, $status);
+    return $this->assertTrue(db_result($result) !== FALSE, "Test found {test_id:$test_id, type:$type, id:$id, status:$status}");
+  }
+
+  /**
+   * Assert that no test record matching criteria exists.
+   *
+   * @param integer $test_id Test ID.
+   * @param integer $type Test type, PIFT_TYPE_*.
+   * @param integer $id Related entitiy ID.
+   * @param integer $status Test status, PIFT_STATUS_*.
+   * @return boolean TRUE if assertion passed, otherwise FALSE.
+   */
+  protected function assertNoTest($test_id, $type, $id, $status) {
+    $result = db_query('SELECT test_id
+                        FROM {pift_test}
+                        WHERE test_id = %d
+                        AND type = %d
+                        AND id = %d
+                        AND status = %d', $test_id, $type, $id, $status);
+    return $this->assertFalse(db_result($result) !== FALSE, "Test not found {test_id:$test_id, type:$type, id:$id, status:$status}");
+  }
+
+  /**
+   * Assert that branch information from XML-RPC request matches properly.
+   *
+   * @param array $branch XML-RPC branch information.
+   * @param string $key Project key.
+   * @param array $dependencies List of project dependencies.
+   * @param boolean $test TRUE if branch should be queued for testing.
+   */
+  protected function assertBranch(array $branch, $key, array $dependencies, $test) {
+    $dependency_string = array();
+    foreach ($dependencies as $dependency) {
+      $dependency_string[] = $this->releases[$dependency]->nid;
+    }
+    $dependency_string = implode(',', $dependency_string);
+
+    $this->assertEqual($branch['project_identifier'], $this->projects[$key]->nid, 'Project identifier matches');
+    $this->assertEqual($branch['client_identifier'], $this->releases[$key]->nid, 'Client identifier matches');
+    $this->assertEqual($branch['vcs_identifier'], 'HEAD', 'Version control identifier matches');
+    $this->assertEqual($branch['dependency'], $dependency_string, 'Dependency list matches');
+    if ($key == 'drupal') {
+      $this->assertEqual($branch['plugin_argument']['core'], '7', 'Core API version matches');
+    }
+    else {
+      $this->assertEqual($branch['plugin_argument']['modules'], array($key, $key . $key), 'Modules list matches');
+    }
+    $this->assertEqual($branch['test'], $test, 'Test flag matches');
+    $this->assertEqual($branch['link'], url('node/' . $this->releases[$key]->nid, array('absolute' => TRUE)), 'Link matches');
+  }
+
+  /**
+   * Assert that file information from XML-RPC request matches properly.
+   *
+   * @param array $file XML-RPC file information.
+   * @param string $key Project key.
+   * @param integer $fid File ID.
+   * @param unknown_type $file_url Absolute URL to file.
+   * @param integer $nid Issue NID.
+   * @param integer $cid Comment ID which the file is located, or NULL.
+   */
+  protected function assertFile(array $file, $key, $fid, $file_url, $nid, $cid = NULL) {
+    $options = array('absolute' => TRUE);
+    if ($cid) {
+      $options['fragment'] = 'comment-' . $cid;
+    }
+
+    $this->assertEqual($file['branch_identifier'], $this->releases[$key]->nid, 'Branch identifier matches');
+    $this->assertEqual($file['client_identifier'], $fid, 'Client identifier matches');
+    $this->assertEqual($file['file_url'], $file_url, 'File URL matches');
+    $this->assertEqual($file['link'], url('node/' . $nid, $options), 'File link matches');
+  }
+
+  /**
+   * Ass that project information from XML-RPC request matches properly.
+   *
+   * @param array $project XML-RPC project information.
+   * @param string $key Project key.
+   */
+  protected function assertProject(array $project, $key) {
+    $directory = $key == 'drupal' ? 'drupal' : 'drupal-contrib/contributions/modules';
+
+    $this->assertEqual($project['client_identifier'], $this->projects[$key]->nid, 'Client identifier matches');
+    $this->assertEqual($project['name'], $this->projects[$key]->title, 'Name matches');
+    $this->assertEqual($project['repository_type'], 'cvs', 'Repository type matches');
+    $this->assertEqual($project['repository_url'], ':pserver:anonymous:anonymous@cvs.drupal.org:/cvs/' . $directory . '/' . $key,
+      'Repository URL matches');
+    $this->assertEqual($project['link'], url('node/' . $this->projects[$key]->nid, array('absolute' => TRUE)), 'Link matches');
+  }
+
+  /**
+   * Assert that an attachment exists and has the intended values.
+   *
+   * @param integer $nid Issue NID.
+   * @param integer $cid Comment ID which the attachment is located, or NULL.
+   * @param string $file File path.
+   * @param string $status Testing status.
+   * @param string $test_result Testing result.
+   * @param string $operations Testing operations.
+   * @return boolean TRUE if assertion passed, otherwise FALSE.
+   */
+  protected function assertAttachment($nid, $cid, $file, $status, $test_result = 'None', $operations = 'None') {
+    $this->drupalGet('node/' . $nid);
+
+    $found = FALSE;
     $result = $this->xpath('//div[@id="pift-results-' . $nid . ($cid ? "-$cid" : '') . '"]');
     if ($result) {
       $result = $result[0]->table->tbody->tr;
 
-      $this->assertEqual($file->basename, $this->asText($result->td[0]), t('Link matches.'));
-      $this->assertEqual(format_size(filesize($file->filename)), $this->asText($result->td[1]), t('Size matches.'));
-      $this->assertEqual($status, $this->asText($result->td[2]), t('Status matches.'));
-      $this->assertEqual($test_result, $this->asText($result->td[3]), t('Test result matches.'));
-      $this->assertEqual($operations, $this->asText($result->td[4]), t('Operations match.'));
+      $found = $this->assertEqual(basename($file), $this->asText($result->td[0]), t('Link matches.')) &&
+        $this->assertEqual(format_size(filesize($file)), $this->asText($result->td[1]), t('Size matches.')) &&
+        $this->assertEqual($status, $this->asText($result->td[2]), t('Status matches.')) &&
+        $this->assertEqual($test_result, $this->asText($result->td[3]), t('Test result matches.')) &&
+        $this->assertEqual($operations, $this->asText($result->td[4]), t('Operations match.'));
     }
-    else {
-      $this->fail(t('Attachment not found (n: @nid, c: @cid).', array('@nid' => $nid, '@cid' => $cid)));
-    }
+    return $this->assertTrue($found, t('Attachment found (n: @nid, c: @cid).', array('@nid' => $nid, '@cid' => $cid)));
   }
 
   /**
    * Check for standard (upload, comment_upload generated) attachment table.
+   *
+   * @param integer $nid Issue NID.
+   * @param integer $cid Comment ID which the attachment is located, or NULL.
+   * @param string $file File path.
+   * * @return boolean TRUE if assertion passed, otherwise FALSE.
    */
-  protected function checkAttachmentStandard($nid, $cid) {
-    $result = $this->xpath('//div[@id="pift-results-' . $nid . ($cid ? "-$cid" : '') . '"]');
+  protected function assertAttachmentStandard($nid, $cid, $file) {
+    $this->drupalGet('node/' . $nid);
 
-    $this->assertFalse($result, t('Attachment not found (n: @nid, c: @cid).', array('@nid' => $nid, '@cid' => $cid)));
+    $result = $this->xpath('//div[@id="pift-results-' . $nid . ($cid ? "-$cid" : '') . '"]');
+    if ($this->assertFalse($result, t('PIFT attachment table not found (n: @nid, c: @cid).', array('@nid' => $nid, '@cid' => $cid)))) {
+      $this->assertText(basename($file), 'Attachment found in standard table');
+    }
   }
 
   /**
@@ -267,11 +584,12 @@ class PIFTTestCase extends DrupalWebTestCase {
    * @return object Comment object.
    */
   protected function loadLastComment($nid) {
-    return db_fetch_object(db_query('SELECT *
-                                      FROM {comments}
-                                      WHERE nid = %d
-                                      ORDER BY cid DESC
-                                      LIMIT 1', $nid));
+    $result = db_query('SELECT cid
+                        FROM {comments}
+                        WHERE nid = %d
+                        ORDER BY cid DESC
+                        LIMIT 1', $nid);
+    return _comment_load(db_result($result));
   }
 
   /**
@@ -285,5 +603,381 @@ class PIFTTestCase extends DrupalWebTestCase {
       return $this->fail('The element is not an element.');
     }
     return trim(html_entity_decode(strip_tags($element->asXML())));
+  }
+}
+
+/**
+ * Ensure that the XML-RPC requests are built and handled properly.
+ */
+class PIFTXMLRPCTestCase extends PIFTTestCase {
+
+  public static function getInfo() {
+    return array(
+      'name' => t('XML-RPC'),
+      'description' => t('Ensure that the XML-RPC requests are built and handled properly.'),
+      'group' => t('PIFT'),
+    );
+  }
+
+  /**
+   * Ensure that the XML-RPC requests are built and handled properly.
+   */
+  protected function testXMLRPC() {
+    // Make a commit to the drupal 7.x-dev branch and ensure that the branch is
+    // queued during the next cron run.
+    $this->addCommit('drupal');
+    $this->runCron();
+
+    // Ensure that the XML-RPC request was created properly.
+    $calls = pifr_xmlrpc_call();
+    $batch = $calls[0]['arguments'][1];
+    $this->assertEqual(count($calls), 2);
+    $this->assertEqual($calls[0]['method'], 'pifr.queue');
+    $this->assertEqual($calls[0]['arguments'][0], $this->settings['pift_key']);
+    $this->assertBranch($batch['branches'][0], 'drupal', array(), TRUE);
+
+    $this->assertEqual($batch['files'], array());
+
+    $this->assertProject($batch['projects'][0], 'drupal');
+
+    // Check the pifr.retrieve request.
+    $this->assertEqual($calls[1]['method'], 'pifr.retrieve');
+    $this->assertEqual($calls[1]['arguments'][0], $this->settings['pift_key']);
+    $this->assertEqual($calls[1]['arguments'][1], 1); // First time, so 1.
+
+    // Ensure that the test record has been properly established.
+    $this->assertTest(1, PIFT_TYPE_RELEASE, $this->releases['drupal']->nid, PIFT_STATUS_SENT);
+
+    // Make a commit to the foo and bar 7.x-dev branches and ensure that both
+    // branches are queued during the next cron run and that drupal core is
+    // in the batch as a dependency, but not flagged for testing.
+    $this->addCommit('foo');
+    $this->addCommit('bar');
+    $this->runCron();
+
+    // Ensure that the XML-RPC request was created properly, the branches and
+    // projects will be in the same order as the commits with drupal last since
+    // it is merley a dependency.
+    $calls = pifr_xmlrpc_call();
+    $batch = $calls[0]['arguments'][1];
+    $this->assertEqual(count($calls), 2);
+    $this->assertBranch($batch['branches'][0], 'foo', array('drupal', 'bar'), TRUE);
+    $this->assertBranch($batch['branches'][1], 'bar', array('drupal', 'foo'), TRUE);
+    $this->assertBranch($batch['branches'][2], 'drupal', array(), FALSE);
+
+    $this->assertEqual($batch['files'], array());
+
+    $this->assertProject($batch['projects'][0], 'foo');
+    $this->assertProject($batch['projects'][1], 'bar');
+    $this->assertProject($batch['projects'][2], 'drupal');
+
+    // Ensure that the test records have been properly established.
+    $this->assertTest(1, PIFT_TYPE_RELEASE, $this->releases['foo']->nid, PIFT_STATUS_SENT);
+    $this->assertTest(2, PIFT_TYPE_RELEASE, $this->releases['bar']->nid, PIFT_STATUS_SENT);
+
+    // Make a commit to drupal then foo so that foo is processed second. Ensure
+    // that drupal is still flagged for testing even when foo adds it drupal as
+    // a dependency.
+    $this->addCommit('drupal');
+    $this->addCommit('foo');
+    $this->runCron();
+
+    $calls = pifr_xmlrpc_call();
+    $batch = $calls[0]['arguments'][1];
+    $this->assertEqual(count($calls), 2);
+    $this->assertBranch($batch['branches'][0], 'drupal', array(), TRUE);
+    $this->assertBranch($batch['branches'][1], 'foo', array('drupal', 'bar'), TRUE);
+    $this->assertBranch($batch['branches'][2], 'bar', array('drupal', 'foo'), FALSE);
+
+    $this->assertEqual($batch['files'], array());
+
+    $this->assertProject($batch['projects'][0], 'drupal');
+    $this->assertProject($batch['projects'][1], 'foo');
+    $this->assertProject($batch['projects'][2], 'bar');
+
+    // Ensure that the test records have been properly established.
+    $this->assertTest(1, PIFT_TYPE_RELEASE, $this->releases['drupal']->nid, PIFT_STATUS_SENT);
+    $this->assertTest(2, PIFT_TYPE_RELEASE, $this->releases['foo']->nid, PIFT_STATUS_SENT);
+  }
+}
+
+/**
+ * Ensure that the various filters function properly.
+ */
+class PIFTFilterTestCase extends PIFTTestCase {
+
+  public static function getInfo() {
+    return array(
+      'name' => t('Filter'),
+      'description' => t('Ensure that the various filters function properly.'),
+      'group' => t('PIFT'),
+    );
+  }
+
+  /**
+   * Ensure that the various filters function properly.
+   */
+  protected function testFilters() {
+    // Disable testing of proeject.
+    $edit = array(
+      'pift_enable' => FALSE,
+    );
+    $this->drupalPost('node/' . $this->projects['foo']->nid . '/edit/issues', $edit, t('Save'));
+    $this->assertText(t('Issue settings have been saved.'));
+    $this->assertText('Enable automated testing of 6.x, 7.x compatible branches and patches.');
+
+    // Make a commit and check that the branch is not queued for testing.
+    $this->addCommit('foo');
+    $this->runCron();
+
+    // Should only be the pifr.retrieve call.
+    $calls = pifr_xmlrpc_call();
+    $this->assertEqual(count($calls), 1);
+
+    $this->assertNoTest(1, PIFT_TYPE_RELEASE, $this->releases['foo']->nid, PIFT_STATUS_SENT);
+
+    // Submit an issue and walk through various filtering checks.
+    $file_relative = drupal_get_path('module', 'pift') . '/tests/pass.patch';
+    $file = realpath($file_relative);
+    $issue = $this->createIssue('foo', drupal_get_path('module', 'pift') . '/tests/pass.patch');
+
+    // Since testing is not enabled for this project the standard attachment
+    // table should be used.
+    $this->assertAttachmentStandard($issue->nid, NULL, $file);
+
+    $settings = array(
+      'pift_core[7]' => TRUE, // 6.x.
+      'pift_core[8]' => FALSE, // 7.x
+    );
+    $this->drupalPost('admin/project/pift', $settings, t('Save configuration'));
+    $this->assertText(t('The configuration options have been saved.'));
+
+    // Enable testing of proeject.
+    $edit = array(
+      'pift_enable' => TRUE,
+    );
+    $this->drupalPost('node/' . $this->projects['foo']->nid . '/edit/issues', $edit, t('Save'));
+    $this->assertText(t('Issue settings have been saved.'));
+    $this->assertText('Enable automated testing of 6.x compatible branches and patches.');
+
+    // Now that testing is enabled for the project the pift table should be
+    // used even though the file itself was ignored.
+    $this->assertAttachment($issue->nid, NULL, $file, t('Ignored'));
+
+    // Add a comment to trigger evaluation of the filters.
+    $comments = array();
+    $edit = array(
+      'files[upload]' => $file,
+    );
+    $this->drupalPost('node/' . $issue->nid, $edit, t('Save'));
+    $this->assertText($this->settings['pift_description']);
+    $comments[] = $this->loadLastComment($issue->nid);
+
+    $this->assertAttachment($issue->nid, NULL, $file, t('Ignored'));
+    $this->assertAttachment($issue->nid, $comments[0]->cid, $file, t('Ignored'));
+
+    // Enable testing of 7.x compatible code.
+    $settings = array(
+      'pift_core[7]' => TRUE, // 6.x.
+      'pift_core[8]' => TRUE, // 7.x
+    );
+    $this->drupalPost('admin/project/pift', $settings, t('Save configuration'));
+    $this->assertText(t('The configuration options have been saved.'));
+
+    // Ensure that description text reflect current core API state.
+    $this->drupalGet('node/' . $this->projects['foo']->nid . '/edit/issues');
+    $this->assertText('Enable automated testing of 6.x, 7.x compatible branches and patches.');
+
+    $edit = array(
+      'files[upload]' => $file,
+    );
+    $this->drupalPost('node/' . $issue->nid, $edit, t('Save'));
+    $comments[] = $this->loadLastComment($issue->nid);
+
+    // Although all other filters permit testing, the issue is not in the right
+    // status so all files should still be ignored.
+    $this->assertAttachment($issue->nid, NULL, $file, t('Ignored'));
+    $this->assertAttachment($issue->nid, $comments[0]->cid, $file, t('Ignored'));
+    $this->assertAttachment($issue->nid, $comments[1]->cid, $file, t('Ignored'));
+
+    $edit = array(
+      'sid' => 8, // Status: "needs review".
+      'files[upload]' => $file,
+    );
+    $this->drupalPost('node/' . $issue->nid, $edit, t('Save'));
+    $comments[] = $this->loadLastComment($issue->nid);
+
+    // Now that status is valid all patches should be queued for testing.
+    $this->assertAttachment($issue->nid, NULL, $file, t('Queued for testing'));
+    $this->assertAttachment($issue->nid, $comments[0]->cid, $file, t('Queued for testing'));
+    $this->assertAttachment($issue->nid, $comments[1]->cid, $file, t('Queued for testing'));
+    $this->assertAttachment($issue->nid, $comments[2]->cid, $file, t('Queued for testing'));
+
+    // Load a non-patch file for upload to check default file name filter.
+    $textFile = array_shift($this->drupalGetTestFiles('text', 1024));
+    $textFile = realpath($textFile->filename);
+
+    $edit = array(
+      'files[upload]' => $textFile,
+    );
+    $this->drupalPost('node/' . $issue->nid, $edit, t('Save'));
+    $comments[] = $this->loadLastComment($issue->nid);
+
+    // All files should remain queued for testing except the text file which
+    // should be ingored due to its extension.
+    $this->assertAttachment($issue->nid, NULL, $file, t('Queued for testing'));
+    $this->assertAttachment($issue->nid, $comments[0]->cid, $file, t('Queued for testing'));
+    $this->assertAttachment($issue->nid, $comments[1]->cid, $file, t('Queued for testing'));
+    $this->assertAttachment($issue->nid, $comments[2]->cid, $file, t('Queued for testing'));
+    $this->assertAttachment($issue->nid, $comments[3]->cid, $textFile, t('Ignored'));
+
+    $this->runCron();
+
+    // Should only be the pifr.retrieve call.
+    $calls = pifr_xmlrpc_call();
+    $batch = $calls[0]['arguments'][1];
+    $this->assertEqual(count($calls), 2);
+    $this->assertBranch($batch['branches'][0], 'foo', array('drupal', 'bar'), FALSE);
+    $this->assertBranch($batch['branches'][1], 'drupal', array(), FALSE);
+    $this->assertBranch($batch['branches'][2], 'bar', array('drupal', 'foo'), FALSE);
+
+    $this->assertFile($batch['files'][0], 'foo', 1, file_create_url('issues/pass.patch'), $issue->nid);
+    $this->assertFile($batch['files'][1], 'foo', 2, file_create_url('issues/pass_0.patch'), $issue->nid, 1);
+    $this->assertFile($batch['files'][2], 'foo', 3, file_create_url('issues/pass_1.patch'), $issue->nid, 2);
+    $this->assertFile($batch['files'][3], 'foo', 4, file_create_url('issues/pass_2.patch'), $issue->nid, 3);
+
+    $this->assertProject($batch['projects'][0], 'foo');
+    $this->assertProject($batch['projects'][1], 'drupal');
+    $this->assertProject($batch['projects'][2], 'bar');
+
+    // The first three tests where not queued so no record was actually
+    // created in pift_test.
+    $this->assertNoTest(1, PIFT_TYPE_RELEASE, $this->releases['foo']->nid, PIFT_STATUS_SENT);
+    $this->assertNoTest(2, PIFT_TYPE_RELEASE, $this->releases['drupal']->nid, PIFT_STATUS_SENT);
+    $this->assertNoTest(3, PIFT_TYPE_RELEASE, $this->releases['bar']->nid, PIFT_STATUS_SENT);
+    $this->assertTest(4, PIFT_TYPE_FILE, 1, PIFT_STATUS_SENT);
+    $this->assertTest(5, PIFT_TYPE_FILE, 2, PIFT_STATUS_SENT);
+    $this->assertTest(6, PIFT_TYPE_FILE, 3, PIFT_STATUS_SENT);
+    $this->assertTest(7, PIFT_TYPE_FILE, 4, PIFT_STATUS_SENT);
+  }
+}
+
+/**
+ * Ensure that the various UI elements function properly.
+ */
+class PIFTUITestCase extends PIFTTestCase {
+
+  public static function getInfo() {
+    return array(
+      'name' => t('UI'),
+      'description' => t('Ensure that the various UI elements function properly.'),
+      'group' => t('PIFT'),
+    );
+  }
+
+  /**
+   * Ensure that the various UI elements function properly.
+   */
+  protected function testUI() {
+    // Set auto-followup user to different user then admin.
+    $systemUser = $this->drupalCreateUser(array('access project issues'));
+    $edit = array(
+      'project_issue_followup_user' => $systemUser->name,
+    );
+    $this->drupalPost('admin/project/project-issue-settings', $edit, t('Save configuration'));
+    $this->assertText(t('The configuration options have been saved.'));
+
+    // Submit an issue and walk through various steps and check the UI.
+    $file_relative = drupal_get_path('module', 'pift') . '/tests/pass.patch';
+    $file = realpath($file_relative);
+    $issue = $this->createIssue('foo', drupal_get_path('module', 'pift') . '/tests/pass.patch');
+
+    // Since the issue status is "Active" the test should be ignored.
+    $this->assertAttachment($issue->nid, NULL, $file, t('Ignored'));
+
+    // Set issue status to "needs review".
+    $edit = array(
+      'sid' => 8, // Status: "needs review".
+    );
+    $this->drupalPost('node/' . $issue->nid, $edit, t('Save'));
+
+    // The patch on the node should be updated to queued.
+    $this->assertAttachment($issue->nid, NULL, $file, t('Queued for testing'));
+    $this->assertTest(0, PIFT_TYPE_FILE, 1, PIFT_STATUS_QUEUE);
+
+    // Run cron so test request will be sent and file status will be updated.
+    $this->runCron();
+
+    // File should have a test ID associated with it and we waiting for result.
+    $this->assertAttachment($issue->nid, NULL, $file, t('Test request sent'), t('None'), t('View details'));
+    $this->assertTest(4, PIFT_TYPE_FILE, 1, PIFT_STATUS_SENT);
+
+    // Set the test response and run cron so pift_test should contain result.
+    $response = array(
+      'results' => array(
+        array(
+          'test_id' => 4,
+          'pass' => FALSE,
+          'message' => $this->randomName(64),
+        ),
+      ),
+      'next' => FALSE,
+    );
+    variable_set('pifr_xmlrpc_response', $response);
+
+    $this->runCron();
+
+    // The test should be recorded as failing with the message sent in request.
+    $this->assertAttachment($issue->nid, NULL, $file, t('Idle'), $response['results'][0]['message'],
+      t('View details') . ' | ' . t('Re-test'));
+    $this->assertTest(4, PIFT_TYPE_FILE, 1, PIFT_STATUS_FAIL);
+
+    // Ensure that auto-comment was created properly.
+    $issue = node_load($issue->nid, NULL, TRUE);
+    $comment = $this->loadLastComment($issue->nid);
+    $this->assertEqual($issue->project_issue['sid'], 13, 'Status: "needs work"');
+    $this->assertEqual($comment->comment, 'The last submitted patch, <a href="#pift-results-7">pass.patch</a>, failed testing.',
+      'Proper comment message found');
+    $this->assertEqual($comment->name, $systemUser->name, 'System user posted comment');
+
+    // Re-test file and ensure that proper steps are displayed.
+    $this->clickLink(t('Re-test'));
+    $this->assertRaw(t('Are you sure you want to request that %file be re-tested?', array('%file' => 'pass.patch')));
+    $this->drupalPost(NULL, array(), t('Re-test'));
+    $this->assertRaw(t('%file has been submitted for re-testing. Please be patient while you wait for results.',
+      array('%file' => 'pass.patch')));
+
+    // Ensure that file shows previous result properly.
+    $this->assertAttachment($issue->nid, NULL, $file, t('Queued for re-testing'), t('Previous result') . ': ' .
+      $response['results'][0]['message'], t('View details'));
+    $this->assertTest(4, PIFT_TYPE_FILE, 1, PIFT_STATUS_QUEUE);
+
+    // Ensure that auto-comment was created properly.
+    $issue = node_load($issue->nid, NULL, TRUE);
+    $comment = $this->loadLastComment($issue->nid);
+    $this->assertEqual($issue->project_issue['sid'], 8, 'Status: "needs review"');
+    $this->assertEqual($comment->comment, '<a href="#pift-results-7">pass.patch</a> queued for re-testing.',
+      'Proper comment message found');
+    $this->assertEqual($comment->name, $this->admin->name, 'User posted comment');
+
+    // Set the test response and run cron so pift_test should contain result.
+    $response = array(
+      'results' => array(
+        array(
+          'test_id' => 4,
+          'pass' => TRUE,
+          'message' => $this->randomName(64),
+        ),
+      ),
+      'next' => FALSE,
+    );
+    variable_set('pifr_xmlrpc_response', $response);
+
+    $this->runCron();
+
+    // The test should be recorded as passing with the message sent in request.
+    $this->assertAttachment($issue->nid, NULL, $file, t('Idle'), $response['results'][0]['message'],
+      t('View details') . ' | ' . t('Re-test'));
+    $this->assertTest(4, PIFT_TYPE_FILE, 1, PIFT_STATUS_PASS);
   }
 }

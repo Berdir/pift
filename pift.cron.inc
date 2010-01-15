@@ -127,10 +127,12 @@ function pift_cron_queue_batch() {
     $response = xmlrpc(PIFT_SERVER . 'xmlrpc.php', 'pifr.queue', PIFT_KEY, $batch);
     if ($response === FALSE) {
       watchdog('pift', 'Failed to send test queue requests to server.', array(), WATCHDOG_ERROR);
+      break;
     }
     elseif (isset($response['response'])) {
       watchdog('pift', 'Test queue request did not succeed: @message.',
         array('@message' => pift_cron_response_code($response['response'])), WATCHDOG_ERROR);
+      break;
     }
     elseif (isset($response['branches']) && isset($response['files'])) {
       // Store branch test IDs using the client_identifier (branch NID).
@@ -148,7 +150,8 @@ function pift_cron_queue_batch() {
       }
     }
     else {
-      watchdog('pift', 'Invalid response to test queue request.', array(), WATCHDOG_ERROR);
+      watchdog('pift', 'Invalid response to test queue request.', $response, WATCHDOG_ERROR);
+      break;
     }
 
     // Once the maximum number of batches has been sent break out of the loop
@@ -418,9 +421,6 @@ function pift_cron_retreive_results() {
         watchdog('pift', 'Retrieval of test results did not succeed: @message.',
                array('@message' => pift_cron_response_code($response['response'])), WATCHDOG_ERROR);
       }
-      else {
-        watchdog('pift', 'No test results to retrieve.');
-      }
     }
     elseif (isset($response['results'])) {
       foreach ($response['results'] as $result) {
@@ -437,7 +437,7 @@ function pift_cron_retreive_results() {
       $next = isset($response['next']) ? $response['next'] : FALSE;
     }
     else {
-      watchdog('pift', 'Invalid response to retrieval of test resutls.', array(), WATCHDOG_ERROR);
+      watchdog('pift', 'Invalid response to retrieval of test results.', array(), WATCHDOG_ERROR);
     }
   }
 }
