@@ -37,7 +37,7 @@ function spawnDruplicon(width, height, druplicon, max, count) {
   var y = Math.floor(Math.random() * height);
 
   // Append Druplicon image tag to HTML body.
-  $('body').append('<img src="' + druplicon + '" style="position: absolute; z-index: 1000; overflow: hidden; left: ' + x + 'px; top: ' + y + 'px;"/>');
+  $('body').append('<img src="' + druplicon + '" style="position: absolute; z-index: 1000; left: ' + x + 'px; top: ' + y + 'px;"/>');
   count++;
   
   // Queue another Druplicon.
