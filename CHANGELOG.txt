@@ -1,6 +1,6 @@
 // $Id$
 
-PIFT 6.x-2.1, 2010-01-15
+PIFT 6.x-2.1, 2010-01-18
 ------------------------
 - Changes:
    * #672850: Re-test request comments should come from user who issued them.
