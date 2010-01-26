@@ -269,3 +269,20 @@ function pift_update_6203() {
 
   return array();
 }
+
+/**
+ * Set the 'pift_last_retrieve' to a close approximate of what it should be.
+ */
+function pift_update_6204() {
+  function pifr_server_xmlrpc_time_gmt($timestamp) {
+    $now = time();
+    $offset = $now - $timestamp;
+    return gmmktime() - $offset;
+  }
+
+  $last = db_result(db_query('SELECT MAX(last_tested) FROM {pift_test}'));
+  $last = pifr_server_xmlrpc_time_gmt($last ? $last : 1);
+  variable_set('pift_last_retrieve', $last);
+
+  return array();
+}

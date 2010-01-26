@@ -922,10 +922,16 @@ class PIFTUITestCase extends PIFTTestCase {
         ),
       ),
       'next' => FALSE,
+      'last' => $last_timestamp = mt_rand(1, 17),
     );
     variable_set('pifr_xmlrpc_response', $response);
 
     $this->runCron();
+
+    // Ensure that pifr.retrieve() information is correct.
+    $calls = pifr_xmlrpc_call();
+    $this->assertEqual(1, $calls[0]['arguments'][1], 'Initial since timestamp should be 1');
+    $this->assertEqual($response['last'], variable_get('pift_last_retrieve', 1), 'Last variable stored');
 
     // The test should be recorded as failing with the message sent in request.
     $this->assertAttachment($issue->nid, NULL, $file, t('Idle'), $response['results'][0]['message'],
@@ -970,10 +976,16 @@ class PIFTUITestCase extends PIFTTestCase {
         ),
       ),
       'next' => FALSE,
+      'last' => gmmktime(),
     );
     variable_set('pifr_xmlrpc_response', $response);
 
     $this->runCron();
+
+    // Ensure that pifr.retrieve() information is correct.
+    $calls = pifr_xmlrpc_call();
+    $this->assertEqual($last_timestamp, $calls[1]['arguments'][1], 'Timestamp should be stored last');
+    $this->assertEqual($response['last'], variable_get('pift_last_retrieve', 1), 'Last variable stored');
 
     // The test should be recorded as passing with the message sent in request.
     $this->assertAttachment($issue->nid, NULL, $file, t('Idle'), $response['results'][0]['message'],
