@@ -4,6 +4,7 @@ PIFT 6.x-2.2, xxxx-xx-xx (development version)
 ------------------------
 - Bugs:
    * #695384: Use testing master timestamp instead of converting local.
+   * Add strict integer cast to pifr.retrieve call.
 
 PIFT 6.x-2.1, 2010-01-18
 ------------------------

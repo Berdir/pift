@@ -408,7 +408,7 @@ function pift_cron_get_release($pid, $tags) {
 function pift_cron_retrieve_results() {
   $next = PIFT_LAST_RETRIEVE;
   while ($next) {
-    $response = xmlrpc(PIFT_SERVER . 'xmlrpc.php', 'pifr.retrieve', PIFT_KEY, $next);
+    $response = xmlrpc(PIFT_SERVER . 'xmlrpc.php', 'pifr.retrieve', PIFT_KEY, (int) $next);
     $next = FALSE;
 
     if ($response === FALSE) {
