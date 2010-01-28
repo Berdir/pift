@@ -1,6 +1,6 @@
 // $Id$
 
-PIFT 6.x-2.2, xxxx-xx-xx (development version)
+PIFT 6.x-2.2, 2010-01-27
 ------------------------
 - Bugs:
    * #695384: Use testing master timestamp instead of converting local.
