@@ -307,7 +307,7 @@ function pift_cron_queue_batch_build_branches_process(array &$batch, array &$bra
     // If the project is Drupal core then add the plugin argument, otherwise
     // determine the compatible core branch and add it as a dependency.
     if (PIFT_PID == $item['project_identifier']) {
-      $item['plugin_argument']['core'] = $api['version'];
+      $item['plugin_argument']['drupal.core.version'] = $api['version'];
     }
     else {
       // Load the Drupal core API release (branch) compatible with this branch.
@@ -335,7 +335,7 @@ function pift_cron_queue_batch_build_branches_process(array &$batch, array &$bra
 
       // Flatten array of dependencies and fill in modules list.
       $item['dependency'] = implode(',', $item['dependency']);
-      $item['plugin_argument']['modules'] = array_keys(project_info_module_list_get($branch->nid));
+      $item['plugin_argument']['drupal.modules'] = array_keys(project_info_module_list_get($branch->nid));
     }
 
     // Add item information to the batch.

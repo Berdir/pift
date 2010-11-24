@@ -1,5 +1,10 @@
 // $Id$
 
+PIFT 6.x-2.3, xxxx-xx-xx (development version)
+------------------------
+- Changes
+   * #981216: Update argument keys for pifr 2.3.
+
 PIFT 6.x-2.2, 2010-01-27
 ------------------------
 - Bugs:
