@@ -484,10 +484,10 @@ class PIFTTestCase extends DrupalWebTestCase {
     $this->assertEqual($branch['vcs_identifier'], 'HEAD', 'Version control identifier matches');
     $this->assertEqual($branch['dependency'], $dependency_string, 'Dependency list matches');
     if ($key == 'drupal') {
-      $this->assertEqual($branch['plugin_argument']['core'], '7', 'Core API version matches');
+      $this->assertEqual($branch['plugin_argument']['drupal.core.version'], '7', 'Core API version matches');
     }
     else {
-      $this->assertEqual($branch['plugin_argument']['modules'], array($key, $key . $key), 'Modules list matches');
+      $this->assertEqual($branch['plugin_argument']['drupal.modules'], array($key, $key . $key), 'Modules list matches');
     }
     $this->assertEqual($branch['test'], $test, 'Test flag matches');
     $this->assertEqual($branch['link'], url('node/' . $this->releases[$key]->nid, array('absolute' => TRUE)), 'Link matches');
