@@ -228,6 +228,7 @@ function pift_attachment_process($status, $has_message) {
   }
   elseif ($status == PIFT_STATUS_SENT) {
     $cell = t('Test request sent');
+    $class = 'pift-retest';
   }
   elseif ($status > PIFT_STATUS_SENT) {
     $cell = t('Idle');
