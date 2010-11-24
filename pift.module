@@ -329,7 +329,6 @@ function theme_pift_auto_followup($type, $nid, $cid, $filename) {
   if ($type == 'retest') {
     if ($cid) {
       $comment = _comment_load($cid);
-      $args['@id'] .= "-$cid";
       $args['@cid'] = $comment->cid;
       $args['@comment'] = $comment->subject;
       return t('<a href="#comment-@cid">@comment</a>: <a href="#@id">@filename</a> queued for re-testing.', $args);

@@ -2,6 +2,8 @@
 
 PIFT 6.x-2.3, xxxx-xx-xx (development version)
 ------------------------
+- Bugs
+   * #714466: Comment ID is placed in re-test link on filename twice.
 - Changes
    * #981216: Update argument keys for pifr 2.3.
    * #744658: Retain re-test color after sent.
