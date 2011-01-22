@@ -18,9 +18,9 @@ function pift_project_enabled($pid) {
   static $statuses = array();
 
   if (!isset($statuses[$pid])) {
-    $nid = db_result(db_query('SELECT pid
+    $nid = db_query('SELECT pid
                                FROM {pift_project}
-                               WHERE pid = %d', $pid));
+                               WHERE pid = :pid', array(':pid' => $pid))->fetchField();
     $statuses[$pid] = ($nid !== FALSE);
   }
   return $statuses[$pid];

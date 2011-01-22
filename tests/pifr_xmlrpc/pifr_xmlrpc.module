@@ -14,7 +14,7 @@
 define('PROJECT_NOMAIL', 17);
 
 /**
- * Implementation of hook_xmlrpc().
+ * Implements hook_xmlrpc().
  */
 function pifr_xmlrpc_xmlrpc() {
   return array(

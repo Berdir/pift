@@ -2,13 +2,8 @@
 name = PIFT
 description = Integrates into project to provide an automated testing hub.
 package = Project
-core = 6.x
+core = 7.x
 php = 5
-files[] = pift.admin.inc
-files[] = pift.module
-files[] = pift.pages.inc
-files[] = pift.project.inc
-files[] = pift.test.inc
 dependencies[] = project
 dependencies[] = project_info
 dependencies[] = project_issue

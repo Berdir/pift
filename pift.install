@@ -9,7 +9,7 @@
  */
 
 /**
- * Implementation of hook_schema().
+ * Implements hook_schema().
  */
 function pift_schema() {
   $schema['pift_test'] = array(
@@ -76,42 +76,21 @@ function pift_schema() {
 }
 
 /**
- * Implementation of hook_install().
+ * Implements hook_install().
  */
 function pift_install() {
-  // Create tables.
-  drupal_install_schema('pift');
 
   // Ensure that pift runs after comment_upload.
-  db_query("UPDATE {system}
-            SET weight = 3
-            WHERE name = '%s'", 'pift');
-
-  // Check for pift_data and as such an update.
-  if (db_table_exists('pift_data')) {
-    // Set schema version just before first update to ensure that updates are
-    // triggered even though the module has been renamed.
-    register_shutdown_function('pift_install_force_update');
-  }
+  db_update('system')
+    ->fields(array('weight' => 3))
+    ->condition('name', 'pift')
+    ->execute();
 }
 
 /**
- * Force update by reverting schema.
- *
- * The schema must be reverted after hook_install() has finished.
- */
-function pift_install_force_update() {
-  db_query("UPDATE {system}
-            SET schema_version = 6199
-            WHERE name = '%s'", 'pift');
-}
-
-/**
- * Implementation of hook_uninstall().
+ * Implements hook_uninstall().
  */
 function pift_uninstall() {
-  // Remove tables.
-  drupal_uninstall_schema('pift');
 
   $vars = array(
     'pift_frequency',
@@ -133,156 +112,4 @@ function pift_uninstall() {
   foreach ($vars as $var) {
     variable_del($var);
   }
-}
-
-/**
- * Remove old variables an setup drupal.org defaults.
- */
-function pift_update_6200() {
-  $ret = array();
-
-  // List of old variables.
-  $vars = array(
-    'pift_server_sites',
-    'pift_server_send_frequency',
-    'pift_server_last_sent',
-    'pift_next_test_server',
-    'pift_server_file_description',
-    'pift_send_limit',
-    'pift_batch_size',
-    'pift_file_regex',
-    'pift_resend_time',
-    'pift_retest_time',
-    'pift_test_status',
-    'pift_projects',
-    'pift_server_release_tag_regex',
-    'pift_server_debug_file_testing_link',
-    'pift_server_auto_followup_sid',
-  );
-
-  // Remove old variables.
-  foreach ($vars as $var) {
-    variable_del($var);
-  }
-
-  // List of default drupal.org values.
-  $vars = array(
-    'pift_frequency' => 0, // Per cron run.
-    'pift_server' => 'http://testing.drupal.org/',
-    'pift_description' => 'Only files ending in <em>.patch</em> or <em>.diff</em> will be sent for testing. '.
-                          'For patches that apply specifically to Drupal 5 or Drupal 6, you can prefix the extension ' .
-                          'with <em>-D5</em> or <em>-D6</em> to prevent them from being queued for testing. For example, ' .
-                          '<em>foo.patch</em> and <em>bar.diff</em> would both be queued for testing, whereas ' .
-                          '<em>foo-D5.patch</em> and <em>bar-D6.diff</em> would not be queued for testing.',
-    'pift_followup_fail' => 13, // Status: 'Needs work'.
-    'pift_followup_retest' => 8, // Status: 'Needs review'.
-    'pift_regex' => '/(?<![.\-_][Dd][56])(\.diff|\.patch)$/',
-    'pift_status' => array(8, 14), // Statuses: 'Needs review', 'reviewed & tested by the community'.
-    'pift_core' => array(7 => 7),
-    'pift_pid' => 3060, // Drupal core project NID.
-    'pift_retest' => 86400, // 1 day.
-  );
-
-  // Store each default variable value.
-  foreach ($vars as $key => $value) {
-    variable_set($key, $value);
-  }
-
-  // Enable testing for the drupal project.
-  db_query('INSERT INTO {pift_project} (pid)
-            VALUES (%d)', 3060);
-
-  return $ret;
-}
-
-/**
- * Update test records.
- */
-function pift_update_6201(&$sandbox = NULL) {
-  $ret = array();
-
-  if (!isset($sandbox['progress'])) {
-    $sandbox['progress'] = 0;
-    $sandbox['current_ftid'] = 0;
-    $sandbox['max'] = db_result(db_query('SELECT COUNT(ftid) FROM {pift_data}'));
-  }
-
-  // Map of old status to equivilent new ones.
-  $statuses = array(
-    0 => 1, // PIFT_UNTESTED => PIFT_STATUS_QUEUE
-    1 => 4, // PIFT_PASSED => PIFT_STATUS_PASS
-    2 => 3, // PIFT_FAILED => PIFT_STATUS_FAIL
-    3 => 1, // PIFT_RETEST => PIFT_STATUS_QUEUE
-    4 => 1, // PIFT_NOT_READABLE => PIFT_STATUS_QUEUE
-  );
-
-  // Read in map of ftid => test_id provided from pifr server 1.x, in a comma
-  // delimited file of the format: file_id(test_id),ftid.
-  if ($lines = file(drupal_get_path('module', 'pift') . '/pifr.file.map')) {
-    $map = array();
-    foreach ($lines as $line) {
-      $parts = explode(',', $line);
-      $map[trim($parts[1])] = trim($parts[0]);
-    }
-
-    // Update old data and insert into test table.
-    $result = db_query_range('SELECT *
-                              FROM {pift_data}
-                              WHERE ftid > %d
-                              ORDER BY ftid ASC', $sandbox['current_ftid'], 0, 5000);
-    while ($test = db_fetch_object($result)) {
-      // Only covert data that testing.drupal.org has a record of.
-      if (isset($map[$test->ftid])) {
-        // Remove link from display data.
-        $message = preg_replace('/\s+(<a|a) href.*?$/', '', $test->display_data);
-
-        db_query("INSERT INTO {pift_test} (test_id, type, id, status, message, last_tested)
-                  VALUES (%d, %d, %d, %d, '%s', %d)",
-                  $map[$test->ftid], PIFT_TYPE_FILE, $test->fid, $statuses[$test->status], $message, $test->timestamp);
-      }
-      $sandbox['progress']++;
-      $sandbox['current_ftid'] = $test->ftid;
-    }
-
-    $ret['#finished'] = empty($sandbox['max']) ? 1 : ($sandbox['progress'] / $sandbox['max']);
-  }
-
-  return $ret;
-}
-
-/**
- * Remove old data.
- */
-function pift_update_6202() {
-  $ret = array();
-
-  $ret[] = update_sql('DROP TABLE {pift_data}');
-
-  return $ret;
-}
-
-/**
- * Convert the core API versions variable to term IDs and enable 6.x and 7.x.
- */
-function pift_update_6203() {
-  variable_set('pift_core', array(87 => 87, 103 => 103));
-
-  return array();
-}
-
-/**
- * Set the 'pift_last_retrieve' to a close approximate of what it should be.
- */
-function pift_update_6204() {
-  function pifr_server_xmlrpc_time_gmt($timestamp) {
-    $now = time();
-    $offset = $now - $timestamp;
-    return gmmktime() - $offset;
-  }
-
-  $last = db_result(db_query('SELECT MAX(last_tested) FROM {pift_test}'));
-  $last = pifr_server_xmlrpc_time_gmt($last ? $last : 1);
-  variable_set('pift_last_retrieve', $last);
-
-  return array();
 }

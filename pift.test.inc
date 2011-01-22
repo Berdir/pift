@@ -11,42 +11,41 @@
 /**
  * Get the test with the specified ID.
  *
- * @param integer $test_id Test ID.
- * @return array Test data.
+ * @param $test_id
+ *   Test ID.
+ * @return
+ *   Test data.
  */
 function pift_test_get($test_id) {
-  return db_fetch_array(db_query('SELECT t.*, f.fid, f.filename, f.filepath, f.filesize,
-                                     IF(u.nid IS NULL, cu.nid, u.nid) AS nid, cu.cid
-                                   FROM {pift_test} t
-                                   LEFT JOIN {files} f
-                                     ON (t.type = %d AND t.id = f.fid)
-                                   LEFT JOIN {upload} u
-                                     ON f.fid = u.fid
-                                   LEFT JOIN {comment_upload} cu
-                                     ON f.fid = cu.fid
-                                   WHERE t.test_id = %d', PIFT_TYPE_FILE, $test_id));
+  return db_query('SELECT t.*, f.fid, f.filename, f.filepath, f.filesize,
+                       IF(u.nid IS NULL, cu.nid, u.nid) AS nid, cu.cid
+                     FROM {pift_test} t
+                     LEFT JOIN {files} f
+                       ON (t.type = :type AND t.id = f.fid)
+                     LEFT JOIN {upload} u
+                       ON f.fid = u.fid
+                     LEFT JOIN {comment_upload} cu
+                       ON f.fid = cu.fid
+                     WHERE t.test_id = :test_id', array(':type' => PIFT_TYPE_FILE, ':test_id' => $test_id))->fetchAssoc();
 }
 
 /**
  * Get the files and test data for the specified comment ID.
  *
- * @param integer $cid Comment ID.
- * @return array List of files and test data.
+ * @param $cid
+ *   Comment ID.
+ * @return
+ *   List of files and test data.
  */
 function pift_test_get_files_comment($cid) {
-  $result = db_query('SELECT f.fid, f.filename, f.filepath, f.filesize, cu.nid, cu.cid, t.*
+  return db_query('SELECT f.fid, f.filename, f.filepath, f.filesize, cu.nid, cu.cid, t.*
                       FROM {files} f
                       INNER JOIN {comment_upload} cu
                         ON f.fid = cu.fid
                       LEFT JOIN {pift_test} t
-                        ON (t.type = %d AND f.fid = t.id)
-                      WHERE cu.cid = %d
-                      ORDER BY cu.weight, f.fid', PIFT_TYPE_FILE, $cid);
-  $files = array();
-  while ($file = db_fetch_array($result)) {
-    $files[] = $file;
-  }
-  return $files;
+                        ON (t.type = :type AND f.fid = t.id)
+                      WHERE cu.cid = :cid
+                      ORDER BY cu.weight, f.fid', array(':type' => PIFT_TYPE_FILE, ':cid' => $cid))->fetchAll(PDO::FETCH_ASSOC);
 }
 
 /**
@@ -56,19 +55,14 @@ function pift_test_get_files_comment($cid) {
  * @return array List of files and test data.
  */
 function pift_test_get_files_comment_all($nid) {
-  $result = db_query('SELECT f.fid, f.filename, f.filepath, f.filesize, cu.nid, cu.cid, t.*
+  return db_query('SELECT f.fid, f.filename, f.filepath, f.filesize, cu.nid, cu.cid, t.*
                       FROM {files} f
                       INNER JOIN {comment_upload} cu
                         ON f.fid = cu.fid
                       LEFT JOIN {pift_test} t
-                        ON (t.type = %d AND f.fid = t.id)
-                      WHERE cu.nid = %d
-                      ORDER BY cu.weight, f.fid', PIFT_TYPE_FILE, $nid);
-  $files = array();
-  while ($file = db_fetch_array($result)) {
-    $files[] = $file;
-  }
-  return $files;
+                        ON (t.type = :type AND f.fid = t.id)
+                      WHERE cu.nid = :nid
+                      ORDER BY cu.weight, f.fid', array(':type' => PIFT_TYPE_FILE, ':nid' => $nid))->fetchAll(PDO::FETCH_ASSOC);
 }
 
 
@@ -79,19 +73,14 @@ function pift_test_get_files_comment_all($nid) {
  * @return array List of files and test data.
  */
 function pift_test_get_files_node($nid) {
-  $result = db_query('SELECT f.fid, f.filename, f.filepath, f.filesize, u.nid, t.*
+  return db_query('SELECT f.fid, f.filename, f.filepath, f.filesize, u.nid, t.*
                       FROM {files} f
                       INNER JOIN {upload} u
                         ON f.fid = u.fid
                       LEFT JOIN {pift_test} t
-                        ON (t.type = %d AND f.fid = t.id)
-                      WHERE u.nid = %d
-                      ORDER BY u.weight, f.fid', PIFT_TYPE_FILE, $nid);
-  $files = array();
-  while ($file = db_fetch_array($result)) {
-    $files[] = $file;
-  }
-  return $files;
+                        ON (t.type = :type AND f.fid = t.id)
+                      WHERE u.nid = :nid
+                      ORDER BY u.weight, f.fid', array(':type' => PIFT_TYPE_FILE, ':nid' => $nid))->fetchAll(PDO::FETCH_ASSOC);
 }
 
 
@@ -166,20 +155,30 @@ function pift_test_add_files(array $files) {
 /**
  * Add a test to the test tables.
  *
- * @param integer $type The type of test to add, PIFT_TYPE_*.
- * @param integer $id Related test detail record ID, either rid, or fid.
+ * @param $type
+ *   The type of test to add, PIFT_TYPE_*.
+ * @param $id
+ *   Related test detail record ID, either rid, or fid.
  */
 function pift_test_add($type, $id) {
-  db_query('INSERT INTO {pift_test} (type, id, status)
-            VALUES (%d, %d, %d)', $type, $id, PIFT_STATUS_QUEUE);
+  db_insert('pift_test')
+    ->fields(array(
+      'type' => $type,
+      'id' => $id,
+      'status' => PIFT_STATUS_QUEUE,
+    ))
+    ->execute();
 }
 
 function pift_test_sent($test_id, $type, $id) {
-  db_query('UPDATE {pift_test}
-            SET test_id = %d,
-            status = %d
-            WHERE type = %d
-            AND id = %d', $test_id, PIFT_STATUS_SENT, $type, $id);
+  db_update('pift_test')
+    ->fields(array(
+      'test_id' => $test_id,
+      'status' => PIFT_STATUS_SENT,
+    ))
+    ->condition('type', $type)
+    ->condition('id', $id)
+    ->execute();
 }
 
 /**
@@ -188,9 +187,10 @@ function pift_test_sent($test_id, $type, $id) {
  * @param integer $test_id Test ID.
  */
 function pift_test_requeue($test_id) {
-  db_query('UPDATE {pift_test}
-            SET status = %d
-            WHERE test_id = %d', PIFT_STATUS_QUEUE, $test_id);
+  db_update('pift_test')
+    ->fields(array('status' => PIFT_STATUS_QUEUE))
+    ->condition('test_id', $test_id)
+    ->execute();
 }
 
 /**
@@ -198,12 +198,14 @@ function pift_test_requeue($test_id) {
  * remove its related data.
  */
 function pift_test_delete_files() {
-  db_query('DELETE FROM {pift_test}
-            WHERE type = %d
-            AND id NOT IN (
-              SELECT fid
-              FROM {files}
-            )', PIFT_TYPE_FILE);
+
+  $subselect = db_select('files')
+    ->fields('files', array('fid'));
+
+  db_delete('pift_test')
+    ->condition('type', PIFT_TYPE_FILE)
+    ->condition('id', $subselect, 'NOT IN')
+    ->execute();
 }
 
 /**

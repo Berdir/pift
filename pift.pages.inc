@@ -70,12 +70,14 @@ function pift_pages_project_issue_settings(&$form, $form_state) {
 function pift_pages_project_issue_settings_submit($form, &$form_state) {
   $enabled = pift_project_enabled($form_state['values']['nid']);
   if ($form_state['values']['pift_enable'] && !$enabled) {
-    db_query('INSERT INTO {pift_project}
-              VALUES (%d)', $form_state['values']['nid']);
+    db_insert('pift_project')
+      ->fields(array('pid' => $form_state['values']['nid']))
+      ->execute();
   }
   else if (!$form_state['values']['pift_enable'] && $enabled) {
-    db_query('DELETE FROM {pift_project}
-              WHERE pid = %d', $form_state['values']['nid']);
+    db_delete('pift_project')
+      ->condition('pid', $form_state['values']['nid'])
+      ->execute();
   }
 }
 
@@ -84,11 +86,10 @@ function pift_pages_project_issue_settings_submit($form, &$form_state) {
  *
  * @param integer Test ID to re-test.
  */
-function pift_pages_retest_confirm_form(&$form_state, $test_id) {
+function pift_pages_retest_confirm_form($form, &$form_state, $test_id) {
   $test = pift_test_get($test_id);
 
   if ($test) {
-    $form = array();
     $form['test'] = array(
       '#type' => 'value',
       '#value' => array(
@@ -129,7 +130,7 @@ function pift_pages_retest_confirm_form_submit($form, &$form_state) {
     $changes = array(
       'nid' => $test['nid'],
       'uid' => $user->uid,
-      'comment' => theme('pift_auto_followup', 'retest', $test['nid'], $test['cid'], $test['title']),
+      'comment' => theme('pift_auto_followup', array('type' => 'retest', 'nid' => $test['nid'], 'cid' => $test['cid'], 'filename' => $test['title'])),
     );
 
     // If node issue status is not already a valid status then set to default
@@ -143,11 +144,12 @@ function pift_pages_retest_confirm_form_submit($form, &$form_state) {
     project_issue_add_auto_followup($changes);
 
     // Update test record to reflect change.
-    db_query('UPDATE {pift_test}
-              SET status = %d
-              WHERE test_id = %d', PIFT_STATUS_QUEUE, $test['test_id']);
+    $affected = db_update('pift_test')
+      ->fields(array('status', PIFT_STATUS_QUEUE))
+      ->condition('test_id', $test['test_id'])
+      ->execute();
 
-    if (db_affected_rows()) {
+    if ($affected) {
       drupal_set_message(t('%title has been submitted for re-testing. Please be patient while you wait for results.',
                            array('%title' => $test['title'])));
     }
@@ -168,7 +170,9 @@ function pift_pages_retest_confirm_form_submit($form, &$form_state) {
  * @param boolean $closed Issue is closed.
  * @return string HTML output.
  */
-function theme_pift_attachments(array $files, $closed) {
+function theme_pift_attachments($variables) {
+  $files = $variables['files'];
+  $closed = $variables['closed'];
   $header = array(t('Attachment'), t('Size'), t('Status'), t('Test result'), t('Operations'));
   $rows = array();
   foreach ($files as $file) {
@@ -204,9 +208,9 @@ function theme_pift_attachments(array $files, $closed) {
     }
     $row[] = ($operations ? implode(' | ', $operations) : '<em>' . t('None') . '</em>');
 
-    $rows[] = array('class' => $class, 'data' => $row);
+    $rows[] = array('class' => array($class), 'data' => $row);
   }
-  return theme('table', $header, $rows);
+  return theme('table', array('header' => $header, 'rows' => $rows));
 }
 
 /**

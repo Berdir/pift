@@ -174,10 +174,8 @@ function pift_admin_settings_form_validate($form, &$form_state) {
  * Query pid using project title.
  */
 function pift_admin_settings_form_submit($form, &$form_state) {
-  $form_state['values']['pift_pid'] = db_result(
-    db_query("SELECT nid
+  $form_state['values']['pift_pid'] = db_query("SELECT nid
               FROM {node}
-              WHERE title = '%s'
-              AND type = '%s'", $form_state['values']['pift_pid'], 'project_project')
-  );
+              WHERE title = :title
+              AND type = :type", array(':title' => $form_state['values']['pift_pid'], ':type' => 'project_project'))->fetchField();
 }

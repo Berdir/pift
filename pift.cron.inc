@@ -62,17 +62,19 @@ function pift_cron_retest() {
 /**
  * Queue testing of releases/branches whenever a commit is made involving them.
  *
- * @param integer $min Min CID.
- * @param integer $max Max CID.
+ * @param $min
+ *   Min CID.
+ * @param $max
+ *   Max CID.
  */
 function pift_cron_test_release($min, $max) {
   $result = db_query('SELECT nid AS pid, branch
                       FROM {cvs_files}
-                      WHERE cid >= %d
-                      AND cid <= %d
-                      GROUP BY nid', $min, $max);
+                      WHERE cid >= :min
+                      AND cid <= :max
+                      GROUP BY nid', array(':min' => $min, ':max' => $max));
   $commits = array();
-  while ($branch = db_fetch_array($result)) {
+  foreach ($result->fetchAll(PDO::FETCH_ASSOC) as $branch) {
     if (!pift_project_enabled($branch['pid'])) {
       // Ignore commits for disabled projects.
       continue;
@@ -99,10 +101,10 @@ function pift_cron_test_release($min, $max) {
       foreach ($api_versions as $api_version) {
         if (array_key_exists($api_version, $release->taxonomy)) {
           // Compatible term found, continue processing.
-          $test_id = db_result(db_query('SELECT test_id
+          $test_id = db_query('SELECT test_id
                                          FROM {pift_test}
-                                         WHERE type = %d
-                                         AND id = %d', PIFT_TYPE_RELEASE, $rid));
+                                         WHERE type = :type
+                                         AND id = :id', array(':type' => PIFT_TYPE_RELEASE, ':id' => $rid))->fetchField();
 
           // If existing test for release, queue it, otherwise add a new test.
           if ($test_id) {
@@ -202,17 +204,16 @@ function pift_cron_queue_batch_build() {
  */
 function pift_cron_queue_batch_build_files(array &$batch, array &$branches) {
   // Load all files that are marked as needs testing or have never been tested.
-  $result = db_query('SELECT f.fid, f.filepath, u.nid AS u_nid, cu.nid AS c_nid, cu.cid AS c_cid
+  $result = db_query_range('SELECT f.fid, f.filepath, u.nid AS u_nid, cu.nid AS c_nid, cu.cid AS c_cid
                       FROM {pift_test} t
                       JOIN {files} f
-                        ON (t.type = %d AND t.id = f.fid)
+                        ON (t.type = :type AND t.id = f.fid)
                       LEFT JOIN {upload} u
                         ON f.fid = u.fid
                       LEFT JOIN {comment_upload} cu
                         ON f.fid = cu.fid
-                      WHERE t.status = %d
-                      LIMIT %d', PIFT_TYPE_FILE, PIFT_STATUS_QUEUE, PIFT_XMLRPC_MAX);
-  while ($file = db_fetch_array($result)) {
+                      WHERE t.status = :status', 0, PIFT_XMLRPC_MAX, array(':type' => PIFT_TYPE_FILE, ':status' => PIFT_STATUS_QUEUE));
+  foreach ($result->fetchAll(PDO::FETCH_ASSOC) as $file) {
     // Load the issue related to the file, either from the comment or node.
     $issue = node_load($file['u_nid'] ? $file['u_nid'] : $file['c_nid']);
 
@@ -246,13 +247,12 @@ function pift_cron_queue_batch_build_files(array &$batch, array &$branches) {
  */
 function pift_cron_queue_batch_build_branches(array &$branches) {
   // Load the branches that are marked as needs testing or have never been tested.
-  $result = db_query('SELECT t.id AS rid
+  $result = db_query_range('SELECT t.id AS rid
                       FROM {pift_test} t
-                      WHERE t.type = %d
-                      AND t.status = %d
-                      LIMIT %d', PIFT_TYPE_RELEASE, PIFT_STATUS_QUEUE, PIFT_XMLRPC_MAX);
-  while ($branch = db_fetch_array($result)) {
-    $branches[$branch['rid']] = TRUE;
+                      WHERE t.type = :type
+                      AND t.status = :status', 0, PIFT_XMLRPC_MAX, array(':type' => PIFT_TYPE_RELEASE, ':status' =>PIFT_STATUS_QUEUE));
+  foreach ($result->fetchCol() as $rid) {
+    $branches[$rid] = TRUE;
   }
 }
 
@@ -390,16 +390,11 @@ function pift_cron_queue_batch_build_projects(array &$batch, array $projects) {
  * @return array Release NIDs that match.
  */
 function pift_cron_get_release($pid, $tags) {
-  $result = db_query('SELECT nid
+  return db_query('SELECT nid
                       FROM {project_release_nodes}
-                      WHERE pid = %d
-                      AND tag IN (' . db_placeholders($tags, 'varchar') . ')',
-                      array_merge(array($pid), $tags));
-  $rids = array();
-  while ($rid = db_result($result)) {
-    $rids[] = $rid;
-  }
-  return $rids;
+                      WHERE pid = :pid
+                      AND tag IN (:tags)',
+                      array(':pid' => $pid, ':tags' => $tags))->fetchCol();
 }
 
 /**
@@ -423,13 +418,14 @@ function pift_cron_retrieve_results() {
     }
     elseif (isset($response['results'])) {
       foreach ($response['results'] as $result) {
-        db_query("UPDATE {pift_test}
-                  SET status = %d,
-                  message = '%s',
-                  last_tested = %d
-                  WHERE test_id = %d",
-                  $result['pass'] ? PIFT_STATUS_PASS : PIFT_STATUS_FAIL, $result['message'], time(), $result['test_id']);
-
+        db_update('pift_test')
+          ->fields(array(
+            'status' => $result['pass'] ? PIFT_STATUS_PASS : PIFT_STATUS_FAIL,
+            'message' => $result['message'],
+            'last_tested' => REQUEST_TIME,
+          ))
+          ->condition('test_id', $result['test_id'])
+          ->execute();
         pift_cron_check_auto_followup($result);
       }
 
@@ -461,18 +457,16 @@ function pift_cron_check_auto_followup(array $result) {
       // an OR clause and thus improve performance.
       $results = array();
       foreach (array('u.nid = i.nid', 'cu.nid = i.nid') as $clause) {
-        $result = db_query('SELECT t.test_id, t.id
+        $results[] = db_query_range('SELECT t.test_id, t.id
                             FROM {pift_test} t
                             LEFT JOIN {upload} u
-                              ON (t.type = %d AND t.id = u.fid)
+                              ON (t.type = :type AND t.id = u.fid)
                             LEFT JOIN {comment_upload} cu
-                              ON (t.type = %d AND t.id = cu.fid)
+                              ON (t.type = :type AND t.id = cu.fid)
                             JOIN {project_issues} i
                               ON ' . $clause . '
-                            WHERE u.nid = %d OR cu.nid = %d
-                            ORDER BY t.id DESC
-                            LIMIT 1', PIFT_TYPE_FILE, PIFT_TYPE_FILE, $test['nid'], $test['nid']);
-        $results[] = db_fetch_array($result);
+                            WHERE u.nid = :nid OR cu.nid = :nid
+                            ORDER BY t.id DESC', 0, 1, array(':type' => PIFT_TYPE_FILE, ':nid' => $test['nid']))->fetchAssoc();
       }
 
       // To simulate OR clause and descending order by 'id' select the test_id
@@ -498,7 +492,7 @@ function pift_cron_auto_followup($nid, $cid, $filename) {
   project_issue_add_auto_followup(array(
     'nid' => $nid,
     'sid' => PIFT_FOLLOWUP_FAIL,
-    'comment' => theme('pift_auto_followup', 'fail', $nid, $cid, $filename),
+    'comment' => theme('pift_auto_followup', array('type' => 'fail', 'nid' => $nid, 'cid' => $cid, 'filename' => $filename)),
   ));
 }
 
