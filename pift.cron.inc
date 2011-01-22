@@ -5,7 +5,7 @@
  * @file
  * Provide cron functions.
  *
- * Copyright 2008-2009 by Jimmy Berry ("boombatower", http://drupal.org/user/214218)
+ * @author Jimmy Berry ("boombatower", http://drupal.org/user/214218)
  */
 
 /**
@@ -17,41 +17,45 @@ function pift_cron_retest() {
     return;
   }
 
-  $api_versions = array_filter(variable_get('pift_core', array()));
+  $api_versions = pift_core_api_versions();
   $sids = variable_get('pift_status', array());
 
   // Only attempt query if both values are not empty.
   if ($api_versions && $sids) {
     $retest_time = time() - PIFT_RETEST;
-    db_query("UPDATE {pift_test}
-              SET status = %d
-              WHERE type = %d
-              AND id IN (
-                SELECT f.fid
-                FROM {files} f
-                LEFT JOIN {upload} u
-                  ON f.fid = u.fid
-                LEFT JOIN {comment_upload} cu
-                  ON f.fid = cu.fid
 
-                JOIN {project_issues} pi
-                  ON (u.nid = pi.nid OR cu.nid = pi.nid)
-                JOIN {pift_project} p
-                  ON pi.pid = p.pid
-                JOIN {project_release_nodes} r
-                  ON pi.rid = r.nid
+    // Loop over 'ON' clause to remove an 'OR' which should be more efficient.
+    foreach (array('u.nid = pi.nid', 'cu.nid = pi.nid') as $clause) {
+      db_query("UPDATE {pift_test}
+                SET status = %d
+                WHERE type = %d
+                AND id IN (
+                  SELECT f.fid
+                  FROM {files} f
+                  LEFT JOIN {upload} u
+                    ON f.fid = u.fid
+                  LEFT JOIN {comment_upload} cu
+                    ON f.fid = cu.fid
 
-                JOIN {node} n
-                  ON r.nid = n.nid
-                JOIN {term_node} t
-                  ON (n.vid = t.vid AND t.tid IN(" . db_placeholders($api_versions, 'int') . "))
+                  JOIN {project_issues} pi
+                    ON " . $clause . "
+                  JOIN {pift_project} p
+                    ON pi.pid = p.pid
+                  JOIN {project_release_nodes} r
+                    ON pi.rid = r.nid
 
-                WHERE pi.sid IN (" . db_placeholders($sids, 'int') . ")
-              )
-              AND status > %d
-              AND last_tested < %d",
-              array_merge(array(PIFT_STATUS_QUEUE, PIFT_TYPE_FILE), $api_versions, $sids,
-                          array(PIFT_STATUS_SENT, $retest_time)));
+                  JOIN {node} n
+                    ON r.nid = n.nid
+                  JOIN {term_node} t
+                    ON (n.vid = t.vid AND t.tid IN (" . db_placeholders($api_versions, 'int') . "))
+
+                  WHERE pi.sid IN (" . db_placeholders($sids, 'int') . ")
+                )
+                AND status > %d
+                AND last_tested < %d",
+                array_merge(array(PIFT_STATUS_QUEUE, PIFT_TYPE_FILE), $api_versions, $sids,
+                            array(PIFT_STATUS_SENT, $retest_time)));
+    }
   }
 }
 
@@ -74,6 +78,7 @@ function pift_cron_test_release($min, $max) {
       continue;
     }
 
+    // If commit group for project has not been started then initialize one.
     if (!isset($commits[$branch['pid']])) {
       $commits[$branch['pid']] = array();
     }
@@ -83,18 +88,31 @@ function pift_cron_test_release($min, $max) {
     $commits[$branch['pid']][$identifier] = $identifier;
   }
 
+  $api_versions = pift_core_api_versions();
   foreach ($commits as $pid => $branches) {
     $rids = pift_cron_get_release($pid, $branches);
     foreach ($rids as $rid) {
-      $test_id = db_result(db_query('SELECT test_id
-                                     FROM {pift_test}
-                                     WHERE type = %d
-                                     AND id = %d', PIFT_TYPE_RELEASE, $rid));
-      if ($test_id) {
-        pift_test_requeue($test_id);
-      }
-      else if ($test_id !== 0) {
-        pift_test_add(PIFT_TYPE_RELEASE, $rid);
+      // Ensure that one of the compatibility terms is present on the release
+      // node.
+      $release = node_load($rid);
+      $found = FALSE;
+      foreach ($api_versions as $api_version) {
+        if (array_key_exists($api_version, $release->taxonomy)) {
+          // Compatible term found, continue processing.
+          $test_id = db_result(db_query('SELECT test_id
+                                         FROM {pift_test}
+                                         WHERE type = %d
+                                         AND id = %d', PIFT_TYPE_RELEASE, $rid));
+
+          // If existing test for release, queue it, otherwise add a new test.
+          if ($test_id) {
+            pift_test_requeue($test_id);
+          }
+          else if ($test_id !== 0) {
+            pift_test_add(PIFT_TYPE_RELEASE, $rid);
+          }
+          break;
+        }
       }
     }
   }
@@ -109,9 +127,12 @@ function pift_cron_queue_batch() {
     $response = xmlrpc(PIFT_SERVER . 'xmlrpc.php', 'pifr.queue', PIFT_KEY, $batch);
     if ($response === FALSE) {
       watchdog('pift', 'Failed to send test queue requests to server.', array(), WATCHDOG_ERROR);
+      break;
     }
     elseif (isset($response['response'])) {
-      watchdog('pift', 'Test queue request did not succeed: @code.', array('@code' => $response['response']), WATCHDOG_ERROR);
+      watchdog('pift', 'Test queue request did not succeed: @message.',
+        array('@message' => pift_cron_response_code($response['response'])), WATCHDOG_ERROR);
+      break;
     }
     elseif (isset($response['branches']) && isset($response['files'])) {
       // Store branch test IDs using the client_identifier (branch NID).
@@ -129,7 +150,8 @@ function pift_cron_queue_batch() {
       }
     }
     else {
-      watchdog('pift', 'Invalid response to test queue request.', array(), WATCHDOG_ERROR);
+      watchdog('pift', 'Invalid response to test queue request.', $response, WATCHDOG_ERROR);
+      break;
     }
 
     // Once the maximum number of batches has been sent break out of the loop
@@ -240,15 +262,20 @@ function pift_cron_queue_batch_build_branches(array &$branches) {
  * @param array $batch Batch information.
  * @param array $branches Branches that must be loaded.
  * @param array $projects List of required projects (pids).
+ * @param integer $depth (Internal) Number of times the function has been
+ *   recursively executed.
  */
-function pift_cron_queue_batch_build_branches_process(array &$batch, array &$branches, array &$projects) {
-  // Relase API version vocabulary.
-  $api_vid = _project_release_get_api_vid();
+function pift_cron_queue_batch_build_branches_process(array &$batch, array &$branches, array &$projects, $depth = 0) {
+  $api_versions = pift_core_api_versions();
 
   // Include branch data for all dependency branches and those that require review.
+  $branches_implied = array();
   foreach ($branches as $rid => $test) {
     // Load branch release node.
-    $branch = node_load($rid);
+    if (!($branch = node_load($rid))) {
+      watchdog('pift', 'Invalid release ID [' . $rid . '] for test ID [' . $test['test_id'] . '].', WATCHDOG_ERROR);
+      continue;
+    }
 
     // Generate branch information.
     $item = array(
@@ -262,37 +289,65 @@ function pift_cron_queue_batch_build_branches_process(array &$batch, array &$bra
     );
 
     // Attempt to determine the Drupal core API version.
-    list($api_version, $api_tid) = pift_core_api($branch);
+    $api = array();
+    foreach ($branch->taxonomy as $tid => $term) {
+      if (in_array($tid, $api_versions)) {
+        $api['version'] = array_shift(explode('.', $term->name, 2));
+        $api['tid'] = $term->tid;
+        break;
+      }
+    }
 
     // If the API version not found then ignore this branch.
-    if (empty($api_version)) {
-      watchdog('pift', 'Project release node [@nid] must have a Drupal core API taxonomy term.', array('@nid' => $branch->nid));
+    if (empty($api)) {
+      watchdog('pift', 'Project release node [@nid] does not have a Drupal core API taxonomy term.', array('@nid' => $branch->nid), WATCHDOG_ERROR);
       continue;
     }
 
     // If the project is Drupal core then add the plugin argument, otherwise
     // determine the compatible core branch and add it as a dependency.
-    if (PIFT_PID == $item['project_nid']) {
-      $item['plugin_argument']['core'] = $api_version;
+    if (PIFT_PID == $item['project_identifier']) {
+      $item['plugin_argument']['drupal.core.version'] = $api['version'];
     }
     else {
       // Load the Drupal core API release (branch) compatible with this branch.
-      $api_release = node_load(pift_core_api_release($api_tid));
-      $item['dependency'] = $api_release->nid;
-      $item['plugin_argument']['modules'] = array(); // TODO Include the list of modules.
+      $api_release = node_load(pift_core_api_release($api['tid']));
+      $item['dependency'] = array($api_release->nid => $api_release->nid);
 
-      // If the core branch has not already been added then add it.
-      if (!isset($branches[$api_release])) {
-        $branches[$api_release->nid] = FALSE;
-        $projects[PIFT_PID] = PIFT_PID;
+      // Cycle through dependencies and add the related branches to the implied
+      // branch list if they are not already being processed.
+      $dependencies = project_info_dependency_list_get($branch->nid);
+      foreach ($dependencies as $dependency) {
+        $item['dependency'][$dependency['rid']] = $dependency['rid'];
       }
+
+      // Check for branches as dependencies that are not in the list of
+      // processed branches.
+      foreach ($item['dependency'] as $rid) {
+        // Add branch to implied list for post-processing.
+        if (!isset($branches[$rid])) {
+          $branches_implied[$rid] = FALSE;
+        }
+      }
+
+      // Ensure that not depending on self.
+      unset($item['dependency'][$branch->nid]);
+
+      // Flatten array of dependencies and fill in modules list.
+      $item['dependency'] = implode(',', $item['dependency']);
+      $item['plugin_argument']['drupal.modules'] = array_keys(project_info_module_list_get($branch->nid));
     }
 
     // Add item information to the batch.
     $batch['branches'][] = $item;
 
-    // Add branch's project to list to be laoded.
+    // Add branch's project to list to be loaded.
     $projects[$branch->project_release['pid']] = $branch->project_release['pid'];
+  }
+
+  // Post-process any implied branches.
+  if ($branches_implied && $depth == 0) {
+    pift_cron_queue_batch_build_branches_process($batch, $branches_implied, $projects, $depth + 1);
   }
 }
 
@@ -311,19 +366,17 @@ function pift_cron_queue_batch_build_projects(array &$batch, array $projects) {
     // Load project node.
     $project = node_load($pid);
 
+    // Load repository information.
+    $repository = $repositories[$project->cvs['repository']];
+
     // Generate project information.
     $item = array(
       'client_identifier' => $project->nid,
       'name' => $project->title,
       'repository_type' => 'cvs',
-      'repository_url' => $repositories[$project->cvs['repository']]->root . $project->cvs['directory'],
+      'repository_url' => rtrim($repository->root . '/' . $repository->modules . $project->cvs['directory'], '/'),
       'link' => url('node/' . $project->nid, array('absolute' => TRUE)),
     );
-
-    if ($project->nid == PIFT_PID) {
-      // Drupal core directory is set to '/' and needs to be '/drupal'.
-      $item['repository_url'] .= 'drupal';
-    }
 
     $batch['projects'][] = $item;
   }
@@ -352,11 +405,10 @@ function pift_cron_get_release($pid, $tags) {
 /**
  * Retrieve test results since the last cron run.
  */
-function pift_cron_retreive_results() {
-  $last = db_result(db_query('SELECT MAX(last_tested) FROM {pift_test}'));
-  $next = pifr_server_xmlrpc_time_gmt($last ? $last : 0);
+function pift_cron_retrieve_results() {
+  $next = PIFT_LAST_RETRIEVE;
   while ($next) {
-    $response = xmlrpc(PIFT_SERVER . 'xmlrpc.php', 'pifr.retrieve', PIFT_KEY, $next);
+    $response = xmlrpc(PIFT_SERVER . 'xmlrpc.php', 'pifr.retrieve', PIFT_KEY, (int) $next);
     $next = FALSE;
 
     if ($response === FALSE) {
@@ -365,11 +417,8 @@ function pift_cron_retreive_results() {
     }
     elseif (isset($response['response'])) {
       if ($response['response'] != PIFR_RESPONSE_ACCEPTED) {
-        watchdog('pift', 'Retrieval of test results did not succeed: @code.',
-               array('@code' => $response['response']), WATCHDOG_ERROR);
-      }
-      else {
-        watchdog('pift', 'No test results to retrieve.');
+        watchdog('pift', 'Retrieval of test results did not succeed: @message.',
+               array('@message' => pift_cron_response_code($response['response'])), WATCHDOG_ERROR);
       }
     }
     elseif (isset($response['results'])) {
@@ -384,37 +433,16 @@ function pift_cron_retreive_results() {
         pift_cron_check_auto_followup($result);
       }
 
-      $next = isset($response['next']) ? $response['next'] : FALSE;
+      // If there are more results then set $next to the last timestamp to be
+      // used in next query.
+      $next = $response['next'] ? $response['last'] : FALSE;
+
+      // Always store last timestamp for next cron run.
+      variable_set('pift_last_retrieve', $response['last']);
     }
     else {
-      watchdog('pift', 'Invalid response to retrieval of test resutls.', array(), WATCHDOG_ERROR);
+      watchdog('pift', 'Invalid response to retrieval of test results.', array(), WATCHDOG_ERROR);
     }
-  }
-}
-
-if (!function_exists('pifr_server_xmlrpc_time_local')) {
-  /**
-   * Convert a GMT Unix timestamp to a local Unix timestamp.
-   *
-   * @param integer $gmt_timestamp GMT Unix timestamp.
-   * @return integer Local timestamp.
-   */
-  function pifr_server_xmlrpc_time_local($gmt_timestamp) {
-    $gmt_now = gmmktime();
-    $offset = $gmt_now - $gmt_timestamp;
-    return time() - $offset;
-  }
-
-  /**
-   * Convert a local Unix timestamp to a GMT Unix timestamp.
-   *
-   * @param integer $timestamp Local Unix timestamp.
-   * @return integer GMT Unix timestamp
-   */
-  function pifr_server_xmlrpc_time_gmt($timestamp) {
-    $now = time();
-    $offset = $now - $timestamp;
-    return gmmktime() - $offset;
   }
 }
 
@@ -428,23 +456,32 @@ function pift_cron_check_auto_followup(array $result) {
     // Test did not pass, make sure that test is for a file.
     $test = pift_test_get($result['test_id']);
     if ($test['fid']) {
-      // Get the current issue state and ensure that the test is the last one for
-      // the particular issue.
-      $test_id = db_result(db_query('SELECT t.test_id
-                                     FROM {pift_test} t
-                                     LEFT JOIN {upload} u
-                                       ON (t.type = %d AND t.id = u.fid)
-                                     LEFT JOIN {comment_upload} cu
-                                       ON (t.type = %d AND t.id = cu.fid)
-                                     JOIN {project_issues} i
-                                       ON (u.nid = i.nid OR cu.nid = i.nid)
-                                     WHERE u.nid = %d OR cu.nid = %d
-                                     ORDER BY t.id DESC
-                                     LIMIT 1', PIFT_TYPE_FILE, PIFT_TYPE_FILE, $test['nid'], $test['nid']));
+      // Get the current issue state and ensure that the test is the last one
+      // for the particular issue. Cycle through clauses to remove the need for
+      // an OR clause and thus improve performance.
+      $results = array();
+      foreach (array('u.nid = i.nid', 'cu.nid = i.nid') as $clause) {
+        $result = db_query('SELECT t.test_id, t.id
+                            FROM {pift_test} t
+                            LEFT JOIN {upload} u
+                              ON (t.type = %d AND t.id = u.fid)
+                            LEFT JOIN {comment_upload} cu
+                              ON (t.type = %d AND t.id = cu.fid)
+                            JOIN {project_issues} i
+                              ON ' . $clause . '
+                            WHERE u.nid = %d OR cu.nid = %d
+                            ORDER BY t.id DESC
+                            LIMIT 1', PIFT_TYPE_FILE, PIFT_TYPE_FILE, $test['nid'], $test['nid']);
+        $results[] = db_fetch_array($result);
+      }
+
+      // To simulate OR clause and descending order by 'id' select the test_id
+      // that has the highest 'id' value.
+      $test_id = $results[0]['id'] > $results[1]['id'] ? $results[0]['test_id'] : $results[1]['test_id'];
 
       if ($test_id == $test['test_id'] && pift_test_check_criteria_issue(node_load($test['nid']))) {
         // Test is last one for the particular issue and still fits the criteria.
-        pift_cron_auto_followup($test['nid'], $test['cid']);
+        pift_cron_auto_followup($test['nid'], $test['cid'], $test['filename']);
       }
     }
   }
@@ -455,11 +492,31 @@ function pift_cron_check_auto_followup(array $result) {
  *
  * @param integer $nid Node ID to post the followup on.
  * @param integer $cid Comment ID, if applicable, containing the failed test.
+ * @param string $filename Name of file.
  */
-function pift_cron_auto_followup($nid, $cid) {
+function pift_cron_auto_followup($nid, $cid, $filename) {
   project_issue_add_auto_followup(array(
     'nid' => $nid,
     'sid' => PIFT_FOLLOWUP_FAIL,
-    'comment' => theme('pift_auto_followup', 'fail', $nid, $cid),
+    'comment' => theme('pift_auto_followup', 'fail', $nid, $cid, $filename),
   ));
+}
+
+/**
+ * Get the response from the code.
+ *
+ * @param integer $response_code Response code.
+ * @return string Representation of reponse code.
+ */
+function pift_cron_response_code($response_code) {
+  switch ($response_code) {
+    case PIFR_RESPONSE_ACCEPTED:
+      return t('Accepted');
+    case PIFR_RESPONSE_INVALID_SERVER:
+      return t('Invalid server (client key may have been disabled)');
+    case PIFR_RESPONSE_DENIED:
+      return t('Denied - ensure that test master is enabled and/or has reporting on');
+    default:
+      return 'Unknown';
+  }
 }

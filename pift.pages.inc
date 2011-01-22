@@ -1,10 +1,11 @@
 <?php
 // $Id$
+
 /**
  * @file
  * Provide general pages and UI functions.
  *
- * Copyright 2008-2009 by Jimmy Berry ("boombatower", http://drupal.org/user/214218)
+ * @author Jimmy Berry ("boombatower", http://drupal.org/user/214218)
  */
 
 /**
@@ -45,12 +46,19 @@ function pift_pages_project_issue_settings(&$form, $form_state) {
     '#weight' => -9,
     '#access' => user_access('pift enable project testing'),
   );
-  $versions = array_filter(variable_get('pift_core', array()));
+
+  // Build an array of core capatible version strings (ie 6.x, 7.x, etc).
+  $api_versions = pift_core_api_versions();
+  $versions = array();
+  foreach ($api_versions as $api_version) {
+    $term = taxonomy_get_term($api_version);
+    $versions[] = $term->name;
+  }
   $form['testing']['pift_enable'] = array(
     '#type' => 'checkbox',
     '#title' => t('Enable automated testing'),
     '#description' => t('Enable automated testing of @versions compatible branches and patches.',
-      array('@versions' => implode('.x, ', $versions) . '.x')),
+      array('@versions' => implode(', ', $versions))),
     '#default_value' => pift_project_enabled($form['nid']['#value']),
   );
   $form['#submit'][] = 'pift_pages_project_issue_settings_submit';
@@ -112,15 +120,29 @@ function pift_pages_retest_confirm_form(&$form_state, $test_id) {
  * Re-queue test if it still meets are criteria.
  */
 function pift_pages_retest_confirm_form_submit($form, &$form_state) {
+  global $user;
+
   $test = $form_state['values']['test'];
 
   if ($test['status'] > PIFT_STATUS_SENT) {
-    project_issue_add_auto_followup(array(
+    // Base changes to be made in followup comment.
+    $changes = array(
       'nid' => $test['nid'],
-      'sid' => PIFT_FOLLOWUP_RETEST,
-      'comment' => theme('pift_auto_followup', 'retest', $test['nid'], $test['cid']),
-    ));
+      'uid' => $user->uid,
+      'comment' => theme('pift_auto_followup', 'retest', $test['nid'], $test['cid'], $test['title']),
+    );
 
+    // If node issue status is not already a valid status then set to default
+    // retest status, otherwise leave status alone.
+    $node = node_load($test['nid']);
+    if (!in_array($node->project_issue['sid'], variable_get('pift_status', array()))) {
+      $changes['sid'] = PIFT_FOLLOWUP_RETEST;
+    }
+
+    // Add followup to issue.
+    project_issue_add_auto_followup($changes);
+
+    // Update test record to reflect change.
     db_query('UPDATE {pift_test}
               SET status = %d
               WHERE test_id = %d', PIFT_STATUS_QUEUE, $test['test_id']);
@@ -143,9 +165,10 @@ function pift_pages_retest_confirm_form_submit($form, &$form_state) {
  * Theme attachments into a table with test results.
  *
  * @param array $files List of file attachments.
+ * @param boolean $closed Issue is closed.
  * @return string HTML output.
  */
-function theme_pift_attachments(array $files) {
+function theme_pift_attachments(array $files, $closed) {
   $header = array(t('Attachment'), t('Size'), t('Status'), t('Test result'), t('Operations'));
   $rows = array();
   foreach ($files as $file) {
@@ -156,7 +179,14 @@ function theme_pift_attachments(array $files) {
 
     if ($file['test_id'] !== NULL) {
       list($row[], $class) = pift_attachment_process($file['status'], (bool) $file['message']);
-      $row[] = $file['message'] ? check_plain($file['message']) : '<em>' . t('None') . '</em>';
+      $message = $file['message'] ? check_plain($file['message']) : '<em>' . t('None') . '</em>';
+
+      // If file is being re-tested then prefix the previous result message.
+      if ($file['message'] && $file['status'] == PIFT_STATUS_QUEUE) {
+        $message = t('Previous result: ') . $message;
+      }
+
+      $row[] = $message;
     }
     else {
       $row[] = '<em>' . t('Ignored') . '</em>';
@@ -169,7 +199,7 @@ function theme_pift_attachments(array $files) {
     if ($file['status'] > PIFT_STATUS_QUEUE || $file['message']) {
       $operations[] = l(t('View details'), PIFT_SERVER . 'pifr/test/' . $file['test_id']);
     }
-    if ($file['status'] > PIFT_STATUS_SENT) {
+    if ($file['status'] > PIFT_STATUS_SENT && !$closed) {
       $operations[] = l(t('Re-test'), 'pift/retest/' . $file['test_id']);
     }
     $row[] = ($operations ? implode(' | ', $operations) : '<em>' . t('None') . '</em>');
@@ -198,6 +228,7 @@ function pift_attachment_process($status, $has_message) {
   }
   elseif ($status == PIFT_STATUS_SENT) {
     $cell = t('Test request sent');
+    $class = 'pift-retest';
   }
   elseif ($status > PIFT_STATUS_SENT) {
     $cell = t('Idle');

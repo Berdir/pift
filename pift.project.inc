@@ -1,10 +1,11 @@
 <?php
 // $Id$
+
 /**
  * @file
  * Provide project related functions.
  *
- * Copyright 2008-2009 by Jimmy Berry ("boombatower", http://drupal.org/user/214218)
+ * @author Jimmy Berry ("boombatower", http://drupal.org/user/214218)
  */
 
 /**

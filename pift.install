@@ -5,7 +5,7 @@
  * @file
  * Provide schema and installation functions.
  *
- * Copyright 2008-2009 by Jimmy Berry ("boombatower", http://drupal.org/user/214218)
+ * @author Jimmy Berry ("boombatower", http://drupal.org/user/214218)
  */
 
 /**
@@ -52,10 +52,11 @@ function pift_schema() {
         'default' => 0,
       ),
     ),
-    'primary key' => array('test_id', 'type', 'id'),
+    'primary key' => array('type', 'id', 'test_id'),
     'indexes' => array(
       'status' => array('status'),
       'last_tested' => array('last_tested'),
+      'type_id' => array('type', 'id'),
     ),
   );
   $schema['pift_project'] = array(
@@ -258,4 +259,30 @@ function pift_update_6202() {
   $ret[] = update_sql('DROP TABLE {pift_data}');
 
   return $ret;
+}
+
+/**
+ * Convert the core API versions variable to term IDs and enable 6.x and 7.x.
+ */
+function pift_update_6203() {
+  variable_set('pift_core', array(87 => 87, 103 => 103));
+
+  return array();
+}
+
+/**
+ * Set the 'pift_last_retrieve' to a close approximate of what it should be.
+ */
+function pift_update_6204() {
+  function pifr_server_xmlrpc_time_gmt($timestamp) {
+    $now = time();
+    $offset = $now - $timestamp;
+    return gmmktime() - $offset;
+  }
+
+  $last = db_result(db_query('SELECT MAX(last_tested) FROM {pift_test}'));
+  $last = pifr_server_xmlrpc_time_gmt($last ? $last : 1);
+  variable_set('pift_last_retrieve', $last);
+
+  return array();
 }

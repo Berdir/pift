@@ -5,7 +5,7 @@
  * @file
  * Integrates into project to provide an automated testing hub.
  *
- * Copyright 2008-2009 by Jimmy Berry ("boombatower", http://drupal.org/user/214218)
+ * @author Jimmy Berry ("boombatower", http://drupal.org/user/214218)
  */
 
 /*
@@ -23,6 +23,7 @@ define('PIFT_PID', variable_get('pift_pid', -1));
 define('PIFT_RETEST', variable_get('pift_retest', 24 * 60 * 60));
 define('PIFT_DELETE', variable_get('pift_delete', FALSE));
 define('PIFT_LAST_CID', variable_get('pift_last_cid', 0));
+define('PIFT_LAST_RETRIEVE', variable_get('pift_last_retrieve', 1));
 
 /**
  * Maximum number of items of the same type to transfer in a single XML-RPC
@@ -82,8 +83,8 @@ function pift_menu() {
   $items = array();
 
   $items['admin/project/pift'] = array(
-    'title' => 'PIFT settings',
-    'description' => 'Configure PIFT.',
+    'title' => 'Automated testing',
+    'description' => 'Configure the automated testing project issue integration.',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('pift_admin_settings_form'),
     'access arguments' => array('administer projects'),
@@ -119,14 +120,16 @@ function pift_theme() {
     'pift_attachments' => array(
       'arguments' => array(
         'files' => array(),
+        'closed' => FALSE,
       ),
       'file' => 'pift.pages.inc',
     ),
     'pift_auto_followup' => array(
       'arguments' => array(
-        'message' => '',
+        'type' => '',
         'nid' => 0,
         'cid' => 0,
+        'filename' => '',
       ),
     ),
   );
@@ -155,7 +158,7 @@ function pift_cron() {
     module_load_include('cron.inc', 'pift');
 
     // Requeue all tests that have passed the re-test interval.
-    pift_cron_retest();
+//    pift_cron_retest(); TODO fix query.
 
     // Queue all tests related to any commits that have occured.
     $cid = db_result(db_query('SELECT MAX(cid) FROM {cvs_messages}'));
@@ -168,8 +171,8 @@ function pift_cron() {
     // Send a batch of queued tests.
     pift_cron_queue_batch();
 
-    // Retreive any results that have occured since last cron run.
-    pift_cron_retreive_results();
+    // Retrieve any results that have occured since last cron run.
+    pift_cron_retrieve_results();
 
     // Store current time as last run.
     variable_set('pift_last', $time);
@@ -207,9 +210,10 @@ function pift_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
     case 'view':
       if (!$a3 && pift_project_enabled($node->project_issue['pid'])) { // Full view.
         $files = pift_test_get_files_node($node->nid);
+        $closed = $node->project_issue['sid'] == PROJECT_ISSUE_STATE_CLOSED;
         $node->content['pift_files'] = array(
           '#value' => '<div id="pift-results-' . $node->nid . '">' .
-                      theme('pift_attachments', $files) . '</div>',
+                      theme('pift_attachments', $files, $closed) . '</div>',
           '#weight' => 50,
         );
         unset($node->content['files']); // Remove old attachments table.
@@ -267,8 +271,9 @@ function pift_comment(&$comment, $op) {
         // Remove comment_upload attachments table and generate new one.
         $comment->comment = preg_replace('/<table class="comment-upload-attachments">.*?<\/table>/s', '', $comment->comment);
         $files = pift_test_get_files_comment($comment->cid);
+        $closed = $node->project_issue['sid'] == PROJECT_ISSUE_STATE_CLOSED;
         $comment->comment .= '<div id="pift-results-' . $comment->nid . '-' . $comment->cid . '">' .
-                             theme('pift_attachments', $files) . '</div>';
+                             theme('pift_attachments', $files, $closed) . '</div>';
       }
       break;
     case 'insert':
@@ -309,46 +314,40 @@ function pift_comment_load_node($comment) {
 /**
  * Theme the auto followup comments.
  *
- * @param string $message Comment message.
+ * @param string $type Type of following, either: 'retest' or 'fail'.
  * @param integer $nid Node ID containting the failed test.
  * @param integer $cid Comment ID, if applicable, containing the failed test.
+ * @param string $filename Name of file.
  * @return string HTML output.
  */
-function theme_pift_auto_followup($type, $nid, $cid) {
-  global $user;
+function theme_pift_auto_followup($type, $nid, $cid, $filename) {
+  $args = array(
+    '@id' => "pift-results-$nid",
+    '@filename' => $filename,
+  );
+
   if ($type == 'retest') {
-    return t('!user requested that <a href="#@id">failed test</a> be re-tested.',
-              array('!user' => theme('username', $user), '@id' => "pift-results-$nid" . ($cid ? "-$cid" : '')));
+    if ($cid) {
+      $comment = _comment_load($cid);
+      $args['@cid'] = $comment->cid;
+      $args['@comment'] = $comment->subject;
+      return t('<a href="#comment-@cid">@comment</a>: <a href="#@id">@filename</a> queued for re-testing.', $args);
+    }
+    return t('<a href="#@id">@filename</a> queued for re-testing.', $args);
   }
   elseif ($type == 'fail') {
-    return t('The last submitted patch <a href="#@id">failed testing</a>.',
-               array('@id' => "pift-results-$nid" . ($cid ? "-$cid" : '')));
+    return t('The last submitted patch, <a href="#@id">@filename</a>, failed testing.', $args);
   }
   return '';
 }
 
 /**
- * Attempt to determine the Drupal core API version.
+ * Get the core compatible API version term IDs.
  *
- * @param object $node Node object.
- * @return array Core API version information in the format
- *   array($api_version, $api_tid).
+ * @return array Associative array of core compatible API version term IDs.
  */
-function pift_core_api($node) {
-  if (!empty($node->taxonomy)) {
-    // Relase API version vocabulary.
-    $api_vid = _project_release_get_api_vid();
-
-    foreach ($node->taxonomy as $tid => $term) {
-      if ($term->vid == $api_vid) {
-        $api_version = array_shift(explode('.', $term->name, 2));
-        $api_tid = $term->tid;
-
-        return array($api_version, $api_tid);
-      }
-    }
-  }
-  return array(NULL, NULL);
+function pift_core_api_versions() {
+  return array_filter(variable_get('pift_core', array()));
 }
 
 /**

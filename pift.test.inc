@@ -1,10 +1,11 @@
 <?php
 // $Id$
+
 /**
  * @file
  * Provide test functions.
  *
- * Copyright 2008-2009 by Jimmy Berry ("boombatower", http://drupal.org/user/214218)
+ * @author Jimmy Berry ("boombatower", http://drupal.org/user/214218)
  */
 
 /**
@@ -107,25 +108,32 @@ function pift_test_get_files_node_all($nid) {
 /**
  * Check the criteria for the specified issue.
  *
+ * The checks are in order of expensive.
+ *
  * @param object $node Node object.
  * @return boolean Passed criteria.
  */
 function pift_test_check_criteria_issue($node) {
-  if (!pift_project_enabled($node->project_issue['pid'])) {
-    return FALSE;
-  }
-
-  $release = node_load($node->project_issue['rid']);
-  list($api_version, $api_tid) = pift_core_api($release);
-  if (!in_array($api_version, array_filter(variable_get('pift_core', array())))) {
-    return FALSE;
-  }
-
+  // Ensure that the issue is in one of the acceptable statuses.
   if (!in_array($node->project_issue['sid'], variable_get('pift_status', array()))) {
     return FALSE;
   }
 
-  return TRUE;
+  // Ensure that the project has testing enabled.
+  if (!pift_project_enabled($node->project_issue['pid'])) {
+    return FALSE;
+  }
+
+  // Ensure that one of the compatibility terms is present on the release node.
+  $release = node_load($node->project_issue['rid']);
+  $api_versions = pift_core_api_versions();
+  foreach ($api_versions as $api_version) {
+    if (array_key_exists($api_version, $release->taxonomy)) {
+      return TRUE;
+    }
+  }
+
+  return FALSE;
 }
 
 /**
