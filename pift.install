@@ -113,3 +113,10 @@ function pift_uninstall() {
     variable_del($var);
   }
 }
+
+/**
+ * Implements hook_update_last_removed()
+ */
+function pift_update_last_removed() {
+  return 6204;
+}
